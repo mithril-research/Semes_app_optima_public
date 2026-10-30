@@ -1,0 +1,23 @@
+# (선택) 부팅 시 자동 시작 — systemd 유닛 예시
+# 설치:
+#   sudo cp chamberinspect-train.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now chamberinspect-train
+# ★ User/WorkingDirectory/ExecStart 경로를 실제 배치 위치로 수정하세요.
+[Unit]
+Description=ChamberInspect Train App (Ubuntu internal)
+After=network.target
+
+[Service]
+Type=simple
+User=node
+Environment=PORT=8000
+Environment=IO_HOST=127.0.0.1
+WorkingDirectory=/opt/semes_app                      # 패키지(src/)의 부모
+ExecStart=/opt/semes_app/src/app/venv/bin/python -m src.app.server
+Restart=on-failure
+RestartSec=5
+# 학습 subprocess 는 자체 프로세스그룹 — 서비스 재시작 시에도 학습은 계속(재접속 시 재연결)
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

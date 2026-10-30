@@ -1,0 +1,13 @@
+@echo off
+chcp 65001 >nul
+set PYTHONIOENCODING=utf-8
+rem ── 레시피별 센서 평균 파형 리포트 ─────────────────────────────
+rem 사용법: 이 파일과 test_avg_waveform.py 를 '앱빌드' 폴더(src 폴더 옆)에 복사한 뒤
+rem         확장자 .txt 를 지우고 더블클릭 (또는 인자와 함께 실행)
+rem   평균파형_실행.bat --data D:\데이터폴더 [--model D:\모델폴더] [--ok-max 0.8]
+rem 인자 없이 실행하면 데이터 폴더 경로를 물어봅니다.
+rem 앱빌드용 venv 가 있으면 그 파이썬을 우선 사용합니다.
+cd /d %~dp0
+if exist venv\Scripts\python.exe ( set PY=venv\Scripts\python.exe ) else ( set PY=python )
+%PY% test_avg_waveform.py %*
+pause

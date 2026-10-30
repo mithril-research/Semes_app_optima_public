@@ -1,0 +1,19 @@
+return {
+    "tcn_past_window": [32, 48, 64, 96, 128],
+    "tcn_future_window": [16, 32, 48, 64, 96, 128],
+    "tcn_stride": [0, 16, 32, 64],
+    "tcn_channels": [32, 48, 64, 96, 128],
+    "tcn_blocks": [4, 5, 6, 7],
+    "tcn_kernel": [2, 3, 5],
+    "tcn_dropout": [0.05, 0.1, 0.2],
+    "tcn_lr": [3e-4, 5e-4, 1e-3],
+    "tcn_epochs": [30, 50, 80],
+    "tcn_batch": [128, 256, 512],
+    "tcn_weight_decay": [1e-5, 1e-4, 1e-3],
+    "use_step_onehot": [True, False],
+    "resid_agg": ["p99", "max", "mean"],
+    "wafer_agg": ["topk_mean", "max"],
+    "wafer_topk": [3, 5, 8],
+    "raw_error_quantile": [97.5, 99.0, 99.5],
+}
+

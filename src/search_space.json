@@ -1,0 +1,15 @@
+{
+  "tcn_past_window": [16, 32, 48, 64, 96, 128, 192, 256],
+  "tcn_future_window": [16, 32, 48, 64, 96, 128, 192, 256],
+  "tcn_stride": [0, 16, 32, 64, 96, 128],
+  "tcn_channels": [32, 48, 64, 96, 128, 192, 256],
+  "tcn_blocks": [4, 5, 6, 7, 8, 9],
+  "tcn_kernel": [2, 3, 5],
+  "tcn_dropout": [0.0, 0.05, 0.1, 0.2],
+  "tcn_lr": [0.0003, 0.0005, 0.001, 0.002],
+  "tcn_epochs": [30, 50, 80],
+  "tcn_batch": [128, 256, 512, 1024, 2048],
+  "tcn_weight_decay": [0.00001, 0.0001, 0.001],
+  "use_step_onehot": [true, false],
+  "raw_error_quantile": [97.5, 99.0, 99.5]
+}

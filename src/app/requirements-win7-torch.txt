@@ -1,0 +1,57 @@
+﻿# WES7 / Windows 7 SP1 — **torch 백엔드** 패키지 목록
+#   onnxruntime 이 그 제어기에서 안 뜰 때 쓰는 대안이다. 기본은 requirements-win7.txt(onnx).
+#
+# ★★ torch 버전을 절대 올리지 말 것 — 2.3.1 이 상한이다.
+#   torch 2.4.1(cp38 마지막 버전)의 torch_cpu.dll 은 kernel32!CreateFile2 를 **정적 임포트**한다.
+#   CreateFile2 는 Windows 8 부터 있는 API 라, Windows 7 에서는 DLL 로더가 실패하고
+#   `import torch` 자체가 죽는다. (PE 임포트 테이블을 직접 파싱해 확인한 사실이며,
+#    PyTorch 공식 문서의 "Windows 7 and greater" 표기와 실제 바이너리가 어긋난다.)
+#   임포트 테이블 실측 결과(cp38-win_amd64 휠, torch_cpu/c10/torch_python.dll):
+#     torch 2.4.1  → kernel32!CreateFile2 정적 임포트  ✗ Win7 불가  ← 여기서 끊긴다
+#     torch 2.3.1  → Win8+ API 정적 임포트 없음        ✓ 상한으로 채택
+#     torch 2.2.2  → 없음                              ✓
+#     torch 2.0.1  → 없음                              ✓
+#     torch 1.13.1 → 없음                              ✓
+#   ※ 2.3.1 은 휠 안의 DLL/PYD 12개를 전수 검사해 Win8+ 정적 임포트가 하나도 없음을 확인했다.
+#     다만 '정적 임포트 없음' 은 로더가 DLL 을 여는 데 문제가 없다는 뜻이다. 실행 중 다른
+#     이유로 막힐 가능성까지 배제하지는 못하므로, 제어기에서 `import torch` 로 최종 확인할 것.
+#
+#   참고: onnxruntime 은 1.15.1 부터 같은 이유로 Win7 에서 못 쓴다(1.14.1 이 상한).
+#         torch 를 기본으로 삼은 이유가 이것이다.
+#
+# 대가: 용량이 크게 늘어난다(torch_cpu.dll 하나가 200MB 이상). 배포 폴더가 1GB 를 넘길 수 있으니
+#       WES7 제어기의 디스크 여유를 먼저 확인할 것.
+#
+# 사용법:  set IO_WES7_BACKEND=torch  후 앱빌드_WES7.bat 실행
+#          모델 폴더에는 .onnx 가 아니라 **tcn_forecast.pt** 를 넣는다.
+#          앱은 IO_BACKEND=torch 로 뜨며 ONNX 경로를 아예 쳐다보지 않는다.
+
+# ── 추론 엔진: torch (CPU) ────────────────────────────────────────
+torch==2.3.1                   # ★ 상한. 위 설명 참고. GPU 판은 쓰지 않는다.
+
+# ── 수치·리포트 ───────────────────────────────────────────────────
+numpy==1.24.4
+pandas==2.0.3
+matplotlib==3.7.5
+
+# ── 웹 서버 + API (onnx 판과 동일) ────────────────────────────────
+pydantic==1.10.26
+fastapi==0.99.1
+uvicorn==0.33.0
+starlette==0.27.0
+anyio<4
+click<8.2
+h11<0.15
+
+# ── 네이티브 창(WebView2 109 고정버전) ────────────────────────────
+pywebview==4.4.1               # ★ 올리지 말 것 — SDK 1.0.1518.46 = Edge 109 = Win7 마지막
+pythonnet==3.0.3
+clr_loader==0.2.6
+cffi==1.17.1
+pycparser==2.22
+
+# ── 패키징 ────────────────────────────────────────────────────────
+setuptools<69
+wheel
+pyinstaller==5.13.2
+pyinstaller-hooks-contrib==2024.3

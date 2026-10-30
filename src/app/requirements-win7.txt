@@ -1,0 +1,78 @@
+﻿# WES7 / Windows 7 SP1 (버전 6.1) 전용 패키지 목록 — Win10 용(requirements-win.txt)과 별도로 관리한다.
+#
+# ★★ 왜 따로 관리하는가
+#   Win10 용 핀(Python 3.10~3.12, numpy 1.26, WebView2)은 Windows 7 에서 하나도 못 쓴다.
+#   · CPython 공식 문서: "Python 3.9 supports Windows 8.1 and newer.
+#     If you require Windows 7 support, please install Python 3.8."  → 3.8 이 마지막
+#   · Microsoft: Edge(=WebView2 런타임) 의 Windows 7 지원은 Edge 109(2023-01)로 종료
+#     → WES7 에서는 WebView2 창을 쓸 수 없다. 브라우저 모드로 띄운다.
+#   아래 버전은 PyPI 에서 cp38-win_amd64 휠이 실제로 존재하는 마지막 버전을 확인해 고정한 것이다.
+#
+# 사용법 (빌드 PC 에 Python 3.8.10 64-bit 설치 필요 — 3.8 이 Win7 마지막 설치본)
+#   앱빌드_win7.bat  실행 (자동으로 이 파일을 쓴다)
+
+# ── 추론 엔진: onnxruntime ──  ※ 기본은 torch 다(requirements-win7-torch.txt)
+#
+# ★★ 1.15.1 부터는 Windows 7 에서 못 쓴다 — PE 임포트 테이블 실측 결과:
+#     1.19.2 / 1.18.1 / 1.17.3 / 1.16.3 / 1.15.1
+#         → onnxruntime.dll 과 onnxruntime_pybind11_state.pyd 가
+#           kernel32!CreateFile2(Windows 8+)를 **정적 임포트** → Win7 에서 로드 실패
+#     1.14.1 / 1.12.1  → Win8+ API 정적 임포트 없음 ✓
+#   그래서 상한을 1.14.1 로 내렸다. (GPU 판은 Win7 대상 아님)
+#
+# ★ 모델 파일의 IR 버전만 맞추면 된다(해결 방법 있음).
+#   학습앱이 만드는 .onnx 는 IR=10(ONNX 1.16 계열)이라 onnxruntime 1.14 가 거절한다
+#   ("Unsupported model IR version"). 다시 학습하거나 재-export 할 필요는 없고,
+#   파일 맨 앞의 IR 표기만 8 로 낮추면 그대로 읽힌다.
+#     모델_IR낮추기_WIN7.bat  (내부적으로 app/onnx_ir_downgrade.py 실행)
+#   이 앱의 모델은 opset 17 에 Conv/Relu/Add/Slice 만 쓰므로 IR 8 범위 안에 있다.
+#   실측 확인: IR 10 → 8 변환 후 로드·추론 정상, 앱 엔진도 ready=True.
+#   torch 판보다 훨씬 가볍다(수십 MB vs 1GB).
+onnxruntime==1.14.1
+
+# ── 수치·리포트 (전부 cp38 휠 존재하는 마지막 버전) ────────────────
+numpy==1.24.4
+pandas==2.0.3
+matplotlib==3.7.5
+
+# ── 웹 서버 + API ─────────────────────────────────────────────────
+#   ★ pydantic 은 반드시 1.x. 2.x 의 pydantic-core 는 Rust 로 빌드되는데,
+#     Rust 는 1.78(2024-05)부터 최소 지원을 Windows 10 으로 올렸다.
+#     cp38 휠이 있어도 Win7 에서 로드가 실패할 수 있다. 1.10 은 Cython 빌드라 무관하다.
+#     앱 코드는 BaseModel 과 .dict() 만 쓰므로 v1 에서 수정 없이 동작한다.
+pydantic==1.10.26
+fastapi==0.99.1                # pydantic v1 을 쓰는 마지막 계열. lifespan= 지원(0.93+)
+uvicorn==0.33.0
+starlette==0.27.0              # fastapi 0.99.1 이 요구하는 버전
+anyio<4                        # starlette 0.27 호환
+click<8.2                      # uvicorn 의존, 3.8 지원 상한
+h11<0.15
+
+# ── 패키징 ────────────────────────────────────────────────────────
+#   PyInstaller 부트로더는 _WIN32_WINNT=0x0601(Win7) 로 빌드되어 Win7 에서 동작한다.
+#   5.13.2 는 requires_python >=3.7,<3.13 이라 3.8 에서 설치된다.
+setuptools<69
+wheel
+pyinstaller==5.13.2
+pyinstaller-hooks-contrib==2024.3
+
+# ── 네이티브 창(WebView2) ─────────────────────────────────────────
+#   ★ Windows 7 에서도 네이티브 창을 쓸 수 있다. 단 조건이 정확히 맞아야 한다.
+#     · pywebview 4.4.1 이 번들한 WebView2 SDK = 1.0.1518.46
+#       → 이 '1518' 빌드가 곧 Edge 109 이고, Edge 109 는 Windows 7 마지막 버전이다.
+#         (그 위 버전 SDK 를 쓰면 Win7 에서 못 도는 런타임을 요구하게 된다 → 버전 고정 필수)
+#     · 제어기에 **WebView2 고정버전 런타임 109.0.1518.x (x64)** 를 폴더로 넣어야 한다.
+#       Evergreen 설치기는 Win7 에 설치되지 않는다(2023-01 지원 종료).
+#     · pywebview 는 레지스트리로만 런타임을 감지하는데 고정버전은 키를 안 남긴다
+#       → desktop.py 의 _force_chromium_if_bundled() 가 우회한다.
+#     · .NET Framework 4.6.2 이상 필요(Win7 SP1 은 4.8 까지 설치 가능).
+#   런타임을 못 넣는 현장이면 브라우저 모드(launcher.py)로 빌드하면 된다.
+pywebview==4.4.1               # ★ 올리지 말 것 — 상위 버전은 Win7 에 없는 런타임을 요구한다
+pythonnet==3.0.3
+clr_loader==0.2.6
+cffi==1.17.1
+pycparser==2.22
+
+# ── 쓰지 않는 것(의도적으로 제외) ──────────────────────────────────
+#   onnxruntime-directml   : DirectX 12 필요 — WES7 대상 아님.
+#   scipy / scikit-learn   : exe 에 번들되지 않고 런타임 미사용.

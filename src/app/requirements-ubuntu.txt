@@ -1,0 +1,31 @@
+﻿# 우분투 학습앱(내부용) 패키지 — 브라우저(Firefox) 접속, 네이티브 뷰 없음.
+#   python3 -m venv venv && source venv/bin/activate
+#   pip install -U pip && pip install -r requirements-ubuntu.txt
+# CUDA torch 는 장비 CUDA 버전에 맞춰 아래 중 하나로(기본 cu128):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+# 폐쇄망이면 개발 PC 에서: pip download -r requirements-ubuntu.txt -d wheels/ 후 반입,
+#   pip install --no-index --find-links wheels/ -r requirements-ubuntu.txt
+
+# ── 추론(검사 기능) ──
+onnxruntime-gpu>=1.17,<1.23        # CUDA EP — GPU 추론. CPU 만 쓰려면 onnxruntime 으로 교체
+
+# ── 학습 후 ONNX 변환(export_onnx_forecast) ──
+#   ★ 필수: torch.onnx 내보내기가 onnx/onnxscript 를 직접 요구한다(없으면 학습은 되는데
+#   '학습 성공·ONNX 변환 실패' 로 끝나 검사 모델을 못 만든다).
+onnx>=1.16
+onnxscript>=0.1.0
+numpy==1.26.4                      # 윈도우 제어기와 동일 세대 고정(결과 일치)
+pandas==2.2.2
+matplotlib>=3.8,<3.10              # 학습 리포트/plot 용
+
+# ── 학습(train_jw) ──
+torch>=2.4                         # ★CUDA 빌드로 설치할 것(위 --index-url 참고)
+optuna>=3.5                        # tcn-search 하이퍼서치
+tqdm
+
+# ── 웹 서버 ──
+fastapi>=0.110
+uvicorn>=0.27
+pydantic>=2.6
+
+# (선택) 폴더선택 창: GNOME 기본 zenity 사용 — 없으면: sudo apt install zenity

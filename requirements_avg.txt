@@ -1,0 +1,20 @@
+# Requirements for test_avg_waveform.py (avg waveform report tool).
+# NOTE: ASCII only in this file - Windows pip reads it with cp949 and
+#       breaks on UTF-8 Korean comments.
+#
+# Install (Python 3.9~3.12 64-bit):
+#   python -m pip install -r requirements_avg.txt
+#
+# Versions pinned to the same generation as the app build (requirements-win.txt).
+# Do NOT upgrade numpy to 2.x - it breaks the PyInstaller app build environment.
+# If this PC already has the app-build venv, no install is needed
+# (run the tool inside that venv, or just use the bat - it auto-detects venv).
+
+numpy==1.26.4
+pandas==2.2.2
+onnxruntime>=1.17.0,<1.23
+
+# needed only to import the judgment code (src/app/server.py); no server is started
+fastapi>=0.110,<0.116
+pydantic>=2.6,<2.10
+uvicorn>=0.27,<0.35

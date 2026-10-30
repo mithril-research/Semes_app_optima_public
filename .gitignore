@@ -1,0 +1,52 @@
+# 빌드 산출물
+ChamberInspect/
+ChamberInspect_Console/
+ChamberInspect_WES7/
+build/
+dist/
+*.spec.bak
+
+# 앱 실행 시 생기는 런타임 폴더·파일
+데이터/
+로그/
+보관/
+리포트/
+train_jobs/
+storage.json
+앱_시작기록.txt
+앱_시작오류.txt
+앱_크래시.txt
+
+# 파이썬
+__pycache__/
+*.pyc
+venv/
+
+# 모델·데이터
+artifacts/
+*.onnx
+*.npz
+*.pt
+*.zip
+
+# 자격증명 (절대 커밋 금지)
+gittoken.txt
+*token*.txt
+.git-credentials
+
+# Local runtime state and original, non-anonymized attachments
+:memory:.ses
+src/app_config.json
+*.png
+*.jpg
+*.jpeg
+*.pdf
+*.docx
+*.xlsx
+*private-anonymization*
+
+산출물/
+.env
+.env.*
+*.pem
+*.key

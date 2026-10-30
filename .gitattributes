@@ -1,0 +1,5 @@
+# 배치 파일은 반드시 CRLF 로 체크아웃 (LF 면 Windows cmd 가 명령을 잘못 읽는다)
+*.bat text eol=crlf
+*.spec text eol=lf
+*.sh   text eol=lf
+*.py   text eol=lf

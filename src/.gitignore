@@ -1,0 +1,10 @@
+# 배포 산출물·데이터·캐시는 커밋 제외 (코드만 추적)
+*.zip
+data/
+reports/
+__pycache__/
+*.pyc
+artifacts/
+artifacts_test/
+models/
+model/
