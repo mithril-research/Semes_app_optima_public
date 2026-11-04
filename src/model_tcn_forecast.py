@@ -17,12 +17,13 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+from src import sensor_names as SN
+from src.sensor_schema import in_group, paired_zone
 import torch
 
 from .auxiliary_sensors import (auxiliary_sensor_columns, auxiliary_sensor_metadata,
                                 configure_auxiliary_model, validate_auxiliary_record)
 
-from .sensor_schema import in_group
 from .config import IOConfig
 from .sensor_graph import graph_adjust_abs_z
 from .tcn import IOTCN
@@ -367,9 +368,9 @@ class TCNForecastModel:
               f"| future_h_mode={self.arch['future_h_mode']} "
               f"| virtual_sensor_mode={self.arch['virtual_sensor_mode']} "
               f"| OK wafer={len(ok_records)} | IO={len(self.io_cols)} "
-              f"| input_sensor={len(self.input_sensor_cols)} | h_input={len(self.h_indices)} "
+              f"| input_sensor={len(self.input_sensor_cols)} | H_input={len(self.h_indices)} "
               f"(Cart H {cart_h}, virtual {input_virtual}) | target_sensor={len(self.sensor_cols)} "
-              f"(h_target {target_h}, virtual_target {target_virtual}) | steps={self.n_steps_global}",
+              f"(H_target {target_h}, virtual_target {target_virtual}) | steps={self.n_steps_global}",
               flush=True)
 
         t0 = time.perf_counter()
@@ -727,7 +728,7 @@ class TCNForecastModel:
 
     @classmethod
     def load(cls, path: Path, cfg: IOConfig, device: Optional[str] = None):
-        d = torch.load(Path(path), map_location="cpu", weights_only=False)
+        d = SN.normalize(torch.load(Path(path), map_location="cpu", weights_only=False))
         m = cls(cfg, device)
         m.io_cols = d["io_cols"]
         m.input_sensor_cols = d.get("input_sensor_cols", d["sensor_cols"])

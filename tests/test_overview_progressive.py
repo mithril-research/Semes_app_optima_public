@@ -17,10 +17,12 @@ var inspectionBusy=false;
 var AbortController=class {constructor(){this.signal={aborted:false};}abort(){this.signal.aborted=true;}};
 var OVPROG=null;
 var dispersionToggle={checked:false};
-var window={},document={getElementById:id=>id==='dispToggle'?dispersionToggle:{}};
+var window={},document={getElementById:id=>id==='dispToggle'?dispersionToggle:{style:{}}};
 var curRange='7d',curScale='day',curRecipe='all',CHK_CH=[],CHK_RC=[];
+var monthStartMode='default',monthStartDay=13;
 var rangeConf={'7d':{label:'7 days'}},SC_SENSOR_VIEW_STATE=null;
 function _chkCsv(){return '';}
+function monthStartQuery(){return '&month_start_day=1';}
 function dispFirstOn(){return true;}
 var paints=[],messages=[],pending=[];
 async function paintOverview(d,qs,id,light,status){paints.push(d.kind);messages.push(status);window._overviewPaintedQuery=qs;}

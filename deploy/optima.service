@@ -1,0 +1,23 @@
+[Unit]
+Description=OPTIMA inspection server
+After=network.target
+
+[Service]
+Type=simple
+User=optima
+Group=optima
+WorkingDirectory=/opt/Semes_app_optima_public
+Environment=IO_HOST=0.0.0.0
+Environment=PORT=8000
+Environment=IO_STATE_DIR=/var/lib/optima
+EnvironmentFile=-/etc/optima.env
+StateDirectory=optima
+ExecStart=/bin/bash /opt/Semes_app_optima_public/src/app/run_ubuntu.sh start
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+KillMode=control-group
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

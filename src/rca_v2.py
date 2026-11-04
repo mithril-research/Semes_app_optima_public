@@ -91,12 +91,8 @@ ABNORMAL_DOWNSTREAM_PT_FALLBACK = [
     "t_004_PV",
 ]
 FRONT_VALVE_ADJUST_SENSOR = "h_004_PV"
-UP_HEATERS = [f"h_022{i}_PV" for i in range(1, 5)]
-DOWN_HEATERS = [
-    f"h_019{i}_PV" for i in range(1, 5)
-] + [
-    f"h_019{i}_PV" for i in range(1, 5)
-]
+UP_HEATERS = ['h_0221_PV', 'h_0222_PV', 'h_0223_PV', 'h_0224_PV']
+DOWN_HEATERS = ['h_0191_PV', 'h_0192_PV', 'h_0193_PV', 'h_0194_PV']
 VESSEL_HEAT_SENSORS = set(UP_HEATERS + DOWN_HEATERS)
 DISPLAY_ROUTE_MAX_NORMAL = 9
 DISPLAY_ROUTE_MAX_ABNORMAL = 11
@@ -136,6 +132,8 @@ def _normalize(value: str) -> str:
 
 def _resolve_trace_name(query: str, traces: dict[str, Trace]) -> str | None:
     aliases = [query]
+    if "S_910PV" in str(query):
+        aliases.append(str(query).replace("S_910PV", "S_910"))
     for name in aliases:
         if name in traces:
             return name
@@ -418,9 +416,9 @@ def _tcn_explain_sensor_accum(trace: Trace, threshold=None,
         _uses_step_accum_threshold,
     )
 
-    t_full = int(len(trace.actual))
+    T_full = int(len(trace.actual))
     plot_keep, _orig_idx, _t, step_plot, _bounds, _spans = _plot_time_filter(
-        trace.model, trace.rec, t_full)
+        trace.model, trace.rec, T_full)
     use_step_threshold = (
         threshold is not None and _uses_step_accum_threshold(threshold, score_kind)
     )
@@ -445,11 +443,11 @@ def _tcn_explain_sensor_accum(trace: Trace, threshold=None,
                     raw_level_col, raw_step)
                 source = "tcn-explain-raw-reconstruction"
             curve_full = _curve_to_view_full(trace.rec, raw_curve)
-            if len(curve_full) == t_full:
+            if len(curve_full) == T_full:
                 accum = np.asarray(curve_full, dtype=np.float64)[plot_keep]
     if accum is None:
         level = np.asarray(trace.level, dtype=np.float64)
-        zc = level[plot_keep] if len(level) == t_full else level
+        zc = level[plot_keep] if len(level) == T_full else level
         if use_step_threshold:
             accum = _step_accum_series_from_level(zc, step_plot, threshold_base=1.0)
             source = "tcn-explain-plot-step-excess"
@@ -461,12 +459,12 @@ def _tcn_explain_sensor_accum(trace: Trace, threshold=None,
     final = float(finite_accum[-1]) if finite_accum.size else None
     if raw_level_col is None:
         level = np.asarray(trace.level, dtype=np.float64)
-        raw_level_col = level[plot_keep] if len(level) == t_full else level
+        raw_level_col = level[plot_keep] if len(level) == T_full else level
     raw_level_col = np.nan_to_num(
         np.asarray(raw_level_col, dtype=np.float64),
         nan=0.0, posinf=0.0, neginf=0.0)
     plot_level = np.asarray(trace.level, dtype=np.float64)
-    plot_level = plot_level[plot_keep] if len(plot_level) == t_full else plot_level
+    plot_level = plot_level[plot_keep] if len(plot_level) == T_full else plot_level
     plot_level = np.nan_to_num(plot_level, nan=0.0, posinf=0.0, neginf=0.0)
     return {
         "curve": accum,
@@ -1179,7 +1177,7 @@ def _build_decision(rec: dict, traces: dict[str, Trace], graph: SensorGraph,
     rca_focus_basis = "t_002_PV 피크 step"
     abnormal_downstream_pt: list[str] = []
     abnormal_downstream_directions: dict[str, str] = {}
-    h_004_adjust_recommended = False
+    frontvalve_adjust_recommended = False
     evidence: dict[str, list[str]] = {}
 
     if inner_status != "abnormal":
@@ -1251,7 +1249,7 @@ def _build_decision(rec: dict, traces: dict[str, Trace], graph: SensorGraph,
                 _append_unique_sensor(downstream_route, sensor)
         abnormal_downstream_directions = _step_directions(
             abnormal_downstream_pt, traces, step)
-        h_004_adjust_recommended = _all_actual_above_expected(
+        frontvalve_adjust_recommended = _all_actual_above_expected(
             abnormal_downstream_pt, traces, step)
         route.extend(downstream_route)
         notes.append(
@@ -1283,7 +1281,7 @@ def _build_decision(rec: dict, traces: dict[str, Trace], graph: SensorGraph,
     recommendation = _directional_recommendation(
         route_order, traces, step, side, side_reason,
         evidence_items)
-    if h_004_adjust_recommended and abnormal_downstream_pt:
+    if frontvalve_adjust_recommended and abnormal_downstream_pt:
         sensors_text = ", ".join(abnormal_downstream_pt)
         recommendation = (
             f"{recommendation} 뒷공정 P/T 센서({sensors_text})가 RCA step에서 "
@@ -1305,12 +1303,12 @@ def _build_decision(rec: dict, traces: dict[str, Trace], graph: SensorGraph,
         "route_full_order": route_full_order,
         "route_order": route_order,
         "route_display_policy": (
-            "conclusion-focused compact route: inner-normal/unknown shows only downstream sensors after t_002; "
+            "conclusion-focused compact route: inner-normal/unknown shows only downstream sensors after t_002_PV; "
             "inner-abnormal keeps upstream supply/control plus selected downstream sensors; full candidate route remains in route_full_order"
         ),
         "abnormal_downstream_pt_sensors": abnormal_downstream_pt,
         "abnormal_downstream_pt_directions": abnormal_downstream_directions,
-        "h_004_adjust_recommended": h_004_adjust_recommended,
+        "frontvalve_adjust_recommended": frontvalve_adjust_recommended,
         "evidence_bundle": evidence,
         "direction_evidence": evidence_items,
         "direction_evidence_summary": evidence_summary,
@@ -1399,12 +1397,12 @@ def _plot_rca_v2(out_path: Path, rec: dict, traces: dict[str, Trace],
         "abnormal": "#b91c1c",
         "unknown": "#6b7280",
     }.get(inner_status, "#6b7280")
-    inner_status_text = f"t_002 {inner_status_label}"
+    inner_status_text = f"t_002_PV {inner_status_label}"
     for row_idx, (ax, sensor) in enumerate(zip(axes, sensors)):
         trace = traces[sensor]
-        t_full = int(len(trace.actual))
+        T_full = int(len(trace.actual))
         plot_keep, orig_idx, t, step_plot, bounds, spans = _plot_time_filter(
-            trace.model, trace.rec, t_full)
+            trace.model, trace.rec, T_full)
         if orig_idx.size == 0:
             ax.axis("off")
             continue
@@ -1413,7 +1411,7 @@ def _plot_rca_v2(out_path: Path, rec: dict, traces: dict[str, Trace],
         exp = exp_raw.copy()
         if sensor in CONTROL_SENSORS and np.isfinite(exp).any():
             exp = np.full_like(exp, float(np.nanmean(exp[np.isfinite(exp)])))
-        ok_limit = _limit_series(trace.model, trace.rec, trace.sensor_index, t_full)[plot_keep]
+        ok_limit = _limit_series(trace.model, trace.rec, trace.sensor_index, T_full)[plot_keep]
         band_lo = exp - ok_limit
         band_hi = exp + ok_limit
         ok_mean, ok_mean_source = _lookup_ok_value_mean(ok_value_bands, trace, step_plot, spans)
@@ -1427,7 +1425,7 @@ def _plot_rca_v2(out_path: Path, rec: dict, traces: dict[str, Trace],
         ylo, yhi = (float(np.nanmin(finite_vals)), float(np.nanmax(finite_vals))) if finite_vals.size else (0.0, 1.0)
         pad = (yhi - ylo) * 0.08 + 1e-6
         mask_full = _step_mask(trace.rec, step, _peak_gap_index(trace, step=step))
-        mask_plot = mask_full[plot_keep] if len(mask_full) == t_full else np.zeros_like(cur, dtype=bool)
+        mask_plot = mask_full[plot_keep] if len(mask_full) == T_full else np.zeros_like(cur, dtype=bool)
         step_spans = _mask_spans(mask_plot)
         for start, end in step_spans:
             ax.axvspan(float(start) - 0.5, float(end) + 0.5,
@@ -1483,7 +1481,7 @@ def _plot_rca_v2(out_path: Path, rec: dict, traces: dict[str, Trace],
     axes[-1].set_xlabel(_time_axis_label(focus_trace.rec))
     step_text = "unknown" if step is None else str(step)
     detail = (
-        f"RCA v2 | t_002={inner_status.upper()} | "
+        f"RCA v2 | t_002_PV={inner_status.upper()} | "
         f"final={_format_float(inner.get('final_score'))} | "
         f"OK={_format_float(inner.get('ok_min'))}~{_format_float(inner.get('ok_max'))} | "
         f"OKmean={_format_float(inner.get('ok_mean'))} | "
@@ -1584,13 +1582,13 @@ def _write_rca_v2_report(path: Path, rec: dict, decision: dict,
         f"- TCN-explain OK band min/max: {_format_float(inner.get('ok_min'))} ~ {_format_float(inner.get('ok_max'))} ({inner.get('source', '-')})",
         f"- TCN-explain same-wafer-axis OK mean final: {_format_float(inner.get('ok_mean'))}",
         f"- t_002_PV status: {inner.get('status', '-')}",
-        f"- t_002 diagnostic graph: {decision.get('inner_sensor', INNER_SENSOR)}",
+        f"- t_002_PV diagnostic graph: {decision.get('inner_sensor', INNER_SENSOR)}",
         f"- Primary peak: {primary.get('sensor', '-')} step {primary.get('step', '-')} |actual-expected| {_format_float(primary.get('level'))}",
         f"- Abnormal downstream P/T sensors: {', '.join(decision.get('abnormal_downstream_pt_sensors', []) or []) or '-'}",
         f"- Abnormal downstream P/T directions: {decision.get('abnormal_downstream_pt_directions', {}) or '-'}",
         f"- Direction evidence summary: {decision.get('direction_evidence_summary', '-')}",
         f"- Evidence bundle: {decision.get('evidence_bundle', {}) or '-'}",
-        f"- h_004 adjustment recommended: {decision.get('h_004_adjust_recommended', False)}",
+        f"- h_004_PV adjustment recommended: {decision.get('frontvalve_adjust_recommended', False)}",
         f"- Valve 9000003 open: {side_info.get('9000003_open', '-')}",
         f"- Valve 9000004 open: {side_info.get('9000004_open', '-')}",
         f"- Side: {decision.get('side', '-') or '-'} ({decision.get('side_reason', '-') or '-'})",
@@ -1751,8 +1749,8 @@ def generate_rca_v2_overlays(
                 decision.get("evidence_bundle", {}) or {}, ensure_ascii=False),
             "direction_evidence_summary": decision.get(
                 "direction_evidence_summary", ""),
-            "h_004_adjust_recommended": decision.get(
-                "h_004_adjust_recommended", False),
+            "frontvalve_adjust_recommended": decision.get(
+                "frontvalve_adjust_recommended", False),
             "recommendation": decision.get("recommendation", ""),
             "plot_path": str(out_path),
             "report_path": str(report_path),
@@ -1778,7 +1776,7 @@ def generate_rca_v2_overlays(
             "abnormal_downstream_pt_sensors",
             "abnormal_downstream_pt_directions",
             "evidence_bundle", "direction_evidence_summary",
-            "h_004_adjust_recommended",
+            "frontvalve_adjust_recommended",
             "recommendation", "plot_path", "report_path",
         ]
         writer = csv.DictWriter(f, fieldnames=fieldnames)

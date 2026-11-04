@@ -71,14 +71,14 @@ class IOConfig:
     # Continuous sensor schema.
     sensor_keep: tuple = ()
     sensor_keep_prefixes: tuple = (
-        "p_", "t_", "h_005", "h_022", "h_019",
+        "p_", "t_", "h_005", "h_022", "h_019", "P_", "T_",
     )
-    target_sensor_prefixes: tuple = ("p_", "t_")
+    target_sensor_prefixes: tuple = ("p_", "t_", "P_", "T_")
     active_control_sensor_prefixes: tuple = (
-        "h_", "h_022", "h_019",
+        "h_", "H_",
     )
     active_control_sensor_keywords: tuple = ()
-    active_control_sensor_regex: str = r"^h_[0-9]+(?:_PV)?$"
+    active_control_sensor_regex: str = r"(^H[_A-Za-z0-9]*|.*(Heat|Heater).*)"
     active_control_sensor_names: tuple = (
         "v_008", "v_010",
         "h_0111_PV", "h_010_PV", "h_008_PV",

@@ -170,11 +170,11 @@ assert(curationSupplyValues(null,'t2','p2').seconds===null,'missing archive');ro
 
     def test_auto_sensor_up_down_stable_and_outlier(self):
         self.check_js('''
-function row(a,b,c,d){return {process_steps:[1],valve_phases:{version:2,status:'ok',steps:{supply:[1]}},sensor_metrics:{mean:{t_real:{1:a},p_real:{1:b},Flow:{1:c},Outlier:{1:d}}}};}
+function row(a,b,c,d){return {process_steps:[1],valve_phases:{version:2,status:'ok',steps:{supply:[1]}},sensor_metrics:{mean:{T_904:{1:a},P_905:{1:b},Flow:{1:c},Outlier:{1:d}}}};}
 var rows=Array.from({length:8},()=>row(100,50,10,10)).concat(Array.from({length:10},(_,i)=>row(110,40,10,i===0?1000:10)));
 var found=detectCurationSensors(rows,8);assert(found.tested===4&&found.sensors.length===2,'only sustained changes');
-assert(found.sensors.find(x=>x.sensor==='t_real').direction==='high','up');
-assert(found.sensors.find(x=>x.sensor==='p_real').direction==='low','down');
+assert(found.sensors.find(x=>x.sensor==='T_904').direction==='high','up');
+assert(found.sensors.find(x=>x.sensor==='P_905').direction==='low','down');
 assert(!found.sensors.some(x=>x.sensor==='Outlier'),'single outlier rejected');
 ''')
 

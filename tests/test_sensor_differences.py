@@ -7,23 +7,23 @@ from src.app.sensor_differences import PAIRS, difference_series, step_sensor_met
 class SensorDifferenceTests(unittest.TestCase):
     def test_duration_relationship_mean_and_min_use_step_measurements(self):
         archive = dict(actual=np.array([[999.], [-2.], [8.], [20.], [float('nan')]]),
-                       step=np.array([0, 1, 1, 2, 3]), meta={'sensor_cols': ['p_test']})
+                       step=np.array([0, 1, 1, 2, 3]), meta={'sensor_cols': ['P_900']})
         row = difference_series(archive)
         metrics = step_sensor_metrics(row)
-        self.assertEqual(metrics['mean']['p_test'], {'1': 3., '2': 20., 'zero_start':999.})
-        self.assertEqual(metrics['min']['p_test'], {'1': -2., '2': 20., 'zero_start':999.})
+        self.assertEqual(metrics['mean']['P_900'], {'1': 3., '2': 20., 'zero_start':999.})
+        self.assertEqual(metrics['min']['P_900'], {'1': -2., '2': 20., 'zero_start':999.})
         self.assertEqual(row['sensor_series'][0]['step_stats']['1']['max'], 8.)
-        self.assertEqual(metrics['std']['p_test'], {'1': 5., '2': 0., 'zero_start':0.})
+        self.assertEqual(metrics['std']['P_900'], {'1': 5., '2': 0., 'zero_start':0.})
         self.assertEqual(step_sensor_metrics({}), {'mean': {}, 'min': {}, 'std': {}})
 
     def test_custom_pair_uses_aligned_raw_samples_and_reversed_sign(self):
         archive = dict(actual=np.array([[999., 0.], [10., 8.], [20., 30.], [np.nan, 5.]]),
-                       step=np.array([0, 1, 1, 1]), meta={'sensor_cols': ['p_customA', 'p_customB']})
-        result = difference_series(archive, pairs=[['p_customA', 'p_customB'], ['p_customB', 'p_customA']])
+                       step=np.array([0, 1, 1, 1]), meta={'sensor_cols': ['P_903', 'P_904']})
+        result = difference_series(archive, pairs=[['P_903', 'P_904'], ['P_904', 'P_903']])
         a, b = result['series'][-2:]
         self.assertEqual(a['step_stats']['1'], dict(mean=-4., min=-10., max=2., std=6., count=2))
         self.assertEqual(b['step_stats']['1'], dict(mean=4., min=-2., max=10., std=6., count=2))
-        missing = difference_series(archive, pairs=[['p_customA', 'p_missing']])['series'][-1]
+        missing = difference_series(archive, pairs=[['P_903', 'P_908']])['series'][-1]
         self.assertIsNotNone(missing['missing'])
         self.assertEqual(missing['step_stats'], {})
 
@@ -109,10 +109,10 @@ class SensorDifferenceTests(unittest.TestCase):
     def test_short_aliases_remain_supported_but_sv_is_not_a_measurement(self):
         arch = self.archive()
         expected = difference_series(arch)
-        arch['meta']['sensor_cols'] = ['p_008', 'p_007', 'p_003',
-                                     't_002', 't_001', 't_003']
+        arch['meta']['sensor_cols'] = ['p_008_PV', 'p_007_PV', 'p_003_PV',
+                                     't_002_PV', 't_001_PV', 't_003_PV']
         self.assertEqual(difference_series(arch), expected)
-        arch['meta']['sensor_cols'][0] = 'p_008_SV'
+        arch['meta']['sensor_cols'][0] = 'p_008_PV_SV'
         result = difference_series(arch)
         self.assertTrue(result['series'][0]['missing'])
         self.assertEqual(result['series'][0]['values'], [None]*3)

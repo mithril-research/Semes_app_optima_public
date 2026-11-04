@@ -445,12 +445,25 @@ def _lookup_ok_value_mean(ok_value_bands: dict | None, trace: Trace,
 
 
 def _family(sensor: str) -> str:
-    s = str(sensor).strip()
+    s = str(sensor)
     low = s.lower()
-    for family in ("t", "p", "h", "d"):
-        if re.match(r"^" + family + r"(\d+|[_-])", low):
-            return family.upper()
-    return "IO" if re.fullmatch(r"\d+", s) else "S"
+    if re.match(r"^t(\d+|[_-])", low) or low.startswith("t_"):
+        return "T"
+    if re.match(r"^p(\d+|[_-])", low) or low.startswith("p_"):
+        return "P"
+    if (
+        re.match(r"^h(\d+|[_-])", low)
+        or "heat" in low
+        or "heater" in low
+        or "cart" in low
+        or "reservoir" in low
+        or "vesselup" in low
+        or "vesseldown" in low
+    ):
+        return "H"
+    if re.fullmatch(r"\d+", s.strip()):
+        return "IO"
+    return "S"
 
 
 def _normalize_name(value: str) -> str:
@@ -1453,15 +1466,15 @@ def _plot_event(out_path: Path, rec: dict, event: Event, traces: dict[str, Trace
     for row_idx, (ax, sensor) in enumerate(zip(axes, sensors)):
         trace = traces[sensor]
         is_focus = sensor == event.sensor
-        t_full = int(len(trace.actual))
+        T_full = int(len(trace.actual))
         plot_keep, orig_idx, t, step_plot, bounds, spans = _plot_time_filter(
-            trace.model, trace.rec, t_full)
+            trace.model, trace.rec, T_full)
         if orig_idx.size == 0:
             ax.axis("off")
             continue
         cur = np.asarray(trace.actual, dtype=np.float64)[plot_keep]
         exp = np.asarray(trace.expected, dtype=np.float64)[plot_keep]
-        ok_limit = _limit_series(trace.model, trace.rec, trace.sensor_index, t_full)[plot_keep]
+        ok_limit = _limit_series(trace.model, trace.rec, trace.sensor_index, T_full)[plot_keep]
         band_lo = exp - ok_limit
         band_hi = exp + ok_limit
         ok_mean, ok_mean_source = _lookup_ok_value_mean(
@@ -1480,9 +1493,9 @@ def _plot_event(out_path: Path, rec: dict, event: Event, traces: dict[str, Trace
         else:
             ylo, yhi = 0.0, 1.0
         pad = (yhi - ylo) * 0.08 + 1e-6
-        mask_full = _step_mask(trace.rec, event.step, min(event.peak_index, t_full - 1))
+        mask_full = _step_mask(trace.rec, event.step, min(event.peak_index, T_full - 1))
         mask_plot = (mask_full[plot_keep]
-                     if len(mask_full) == t_full
+                     if len(mask_full) == T_full
                      else np.zeros_like(cur, dtype=bool))
         for start, end in _mask_spans(mask_plot):
             ax.axvspan(float(start) - 0.5, float(end) + 0.5,

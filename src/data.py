@@ -1,7 +1,6 @@
 """Data loading and schema inference for IO-Recon-TCN."""
 from __future__ import annotations
 
-
 import os
 import json
 import re
@@ -9,9 +8,10 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 import numpy as np
+from src import sensor_names as SN
+from src.sensor_schema import in_group, paired_zone
 import pandas as pd
 
-from .sensor_schema import in_group, paired_zone
 from .auxiliary_sensors import (add_auxiliary_sensors as _add_auxiliary_sensors,
                                 auxiliary_sensor_columns, AuxiliarySensorError)
 
@@ -142,7 +142,7 @@ def _read_csv(path: Path, **kwargs) -> pd.DataFrame:
         df.attrs["n_bad_lines"] = int(bad["n"])          # load_dataset 가 rec 로 전달
     except Exception:                                    # noqa: BLE001
         pass
-    return df
+    return SN.frame(df)
 
 
 def _data_files(folder: Path):
@@ -239,7 +239,13 @@ def _is_h_sensor_name(name: str, cfg: IOConfig) -> bool:
 
 
 def _is_cart_h_sensor_name(name: str, cfg: IOConfig) -> bool:
-    return _is_h_sensor_name(name, cfg) and in_group(name, "cart")
+    """Cart 계열 H 센서 ablation용 판별.
+
+    H family 중 이름에 Cart가 포함된 센서만 제외/포함 실험 대상으로 본다.
+    P/T target 센서명에 Cart가 들어가더라도 여기서는 H 판별을 먼저 통과해야 한다.
+    """
+    text = str(name).strip()
+    return _is_h_sensor_name(text, cfg) and (in_group(text, "cart"))
 
 
 def _virtual_sensor_mode(cfg: IOConfig) -> str:
@@ -358,7 +364,7 @@ def _infer_schema(files: List[Path], cfg: IOConfig, cancel_check=None) -> Tuple[
             cancel_check()
         try:
             st = f.stat()
-            key = (str(f), st.st_size, st.st_mtime, nrows, repr(cfg), "cylinder-v1")
+            key = (str(f), st.st_size, st.st_mtime, nrows, repr(cfg), "cylinder-v1", SN.mapping_signature())
         except OSError:
             key = None
         hit = _SCHEMA_CACHE.get(key) if key else None
@@ -440,7 +446,7 @@ def _parsed_frame(f: Path, cfg: IOConfig) -> pd.DataFrame:
     if cdir is not None:
         try:
             st = f.stat()
-            vver = "v4-cylinder-input:" + hashlib.md5(repr(cfg).encode("utf-8", "ignore")).hexdigest()[:8]
+            vver = SN.mapping_signature()+":v5-anonymous:" + hashlib.md5(repr(cfg).encode("utf-8", "ignore")).hexdigest()[:8]
             key = cdir / (f"{f.stem}_"
                           f"{hashlib.md5(str(f.resolve()).encode('utf-8', 'ignore')).hexdigest()[:8]}.npz")
             if key.exists():

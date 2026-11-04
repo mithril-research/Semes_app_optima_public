@@ -17,11 +17,11 @@ class BoundaryZeroTests(unittest.TestCase):
     def frame(self):
         return pd.DataFrame({'Time':[0,2,5,8,10,13,17,21,25],
             'ProcessStep':[0,0,1,1,0,2,2,0,0],
-            'p_test':[10,14,30,34,999,50,54,100,120],
-            't_test':[1,3,5,7,999,9,11,10,20], '9000009':[0]*9})
+            'P_900':[10,14,30,34,999,50,54,100,120],
+            'T_900':[1,3,5,7,999,9,11,10,20], '9000009':[0]*9})
 
     def summary(self, frame=None):
-        return difference_series(attach_trend_measurements({'meta':{}},trend_measurements(self.frame() if frame is None else frame)),pairs=[['p_test','t_test']])
+        return difference_series(attach_trend_measurements({'meta':{}},trend_measurements(self.frame() if frame is None else frame)),pairs=[['P_900','T_900']])
 
     def test_means_difference_timing_and_export_stay_separate(self):
         row=self.summary();stats=row['sensor_series'][0]['step_stats']
@@ -35,7 +35,7 @@ class BoundaryZeroTests(unittest.TestCase):
         self.assertEqual(timing['zero_start']['seconds'],5.)
         self.assertEqual(timing['zero_end']['seconds'],4.)
         self.assertEqual(timing['1']['seconds'],5.)
-        self.assertEqual(step_sensor_metrics(row)['mean']['p_test']['zero_end'],110.)
+        self.assertEqual(step_sensor_metrics(row)['mean']['P_900']['zero_end'],110.)
         export=compact_trend_export(row,['mean','max'])
         self.assertEqual(export['sensor_series'][0]['export_step_stats']['zero_end'],dict(mean=110.,max=120.))
         self.assertEqual(export['process_steps'],[1,2]);self.assertEqual(export['zero_step_version'],1)
@@ -44,7 +44,7 @@ class BoundaryZeroTests(unittest.TestCase):
     def test_no_invented_boundaries_or_missing_values(self):
         for steps,expected in [([0,0],[]),([1,0,2],[]),([1,0],['zero_end']),([0,1],['zero_start']),([np.nan,0,1],[])]:
             self.assertEqual(list(boundary_zero_indices(steps)),expected)
-        f=self.frame();f.loc[:1,'p_test']=np.nan
+        f=self.frame();f.loc[:1,'P_900']=np.nan
         self.assertNotIn('zero_start',self.summary(f)['sensor_series'][0]['step_stats'])
         f=self.frame().iloc[:-1]
         self.assertIsNone(step_timing(f)['steps']['zero_end']['seconds'])

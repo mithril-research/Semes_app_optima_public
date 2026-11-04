@@ -12,6 +12,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 
 import numpy as np
+from src import sensor_names as SN
 
 
 _RANGE_RE = re.compile(r"^(?P<prefix>.*?)(?P<start>\d+)-(?P<end>\d+)(?P<suffix>[^0-9]*)$")
@@ -63,7 +64,7 @@ class SensorGraph:
     @classmethod
     def from_json(cls, path: Path) -> "SensorGraph":
         path = Path(path)
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        raw = SN.normalize(json.loads(path.read_text(encoding="utf-8")))
         edges = defaultdict(set)
         for src, dsts in raw.items():
             srcs = expand_node_name(src)

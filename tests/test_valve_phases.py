@@ -12,7 +12,7 @@ class ValvePhaseTests(unittest.TestCase):
   for st in (5,6):open_step(st,'9000004')
   open_step(7,'9000011','9000012')
   open_step(8,'9000013')
-  return dict(meta={'rca_io_cols':list(PHASE_VALVES),'sensor_cols':['p_test']},step=steps,rca_io=io,actual=np.ones((24,1)))
+  return dict(meta={'rca_io_cols':list(PHASE_VALVES),'sensor_cols':['P_900']},step=steps,rca_io=io,actual=np.ones((24,1)))
  def test_all_four_phases(self):
   result=valve_phase_steps(self.archive());self.assertEqual(result['status'],'ok')
   self.assertEqual(result['steps'],dict(supply=[1,2],wait=[3,4],process=[5,6],discharge=[7,8]))
@@ -33,7 +33,7 @@ class ValvePhaseTests(unittest.TestCase):
   a=self.archive();a['rca_io'][0,0]=np.nan;self.assertEqual(valve_phase_steps(a)['status'],'unavailable')
   a=self.archive();a['meta']['rca_io_cols'][0]='not_valve';self.assertEqual(valve_phase_steps(a)['status'],'unavailable')
  def test_additional_valve_prevents_only_41(self):
-  a=self.archive();a['meta']['rca_io_cols'].append('9000014');a['rca_io']=np.column_stack((a['rca_io'],np.ones(24)))
+  a=self.archive();a['meta']['rca_io_cols'].append('9000999');a['rca_io']=np.column_stack((a['rca_io'],np.ones(24)))
   self.assertEqual(valve_phase_steps(a)['status'],'unavailable')
  def test_repeated_step_ambiguous(self):
   a=self.archive();a['step'][-1]=1;self.assertEqual(valve_phase_steps(a)['status'],'unavailable')

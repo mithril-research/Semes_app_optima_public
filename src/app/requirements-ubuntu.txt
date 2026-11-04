@@ -1,4 +1,4 @@
-﻿# 우분투 학습앱(내부용) 패키지 — 브라우저(Firefox) 접속, 네이티브 뷰 없음.
+# 우분투 학습앱(내부용) 패키지 — 브라우저(Firefox) 접속, 네이티브 뷰 없음.
 #   python3 -m venv venv && source venv/bin/activate
 #   pip install -U pip && pip install -r requirements-ubuntu.txt
 # CUDA torch 는 장비 CUDA 버전에 맞춰 아래 중 하나로(기본 cu128):
@@ -29,3 +29,7 @@ uvicorn>=0.27
 pydantic>=2.6
 
 # (선택) 폴더선택 창: GNOME 기본 zenity 사용 — 없으면: sudo apt install zenity
+
+# Auxiliary models must use the same sklearn version on Windows and Ubuntu.
+scikit-learn==1.3.2
+joblib>=1.3,<1.5

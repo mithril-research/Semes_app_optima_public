@@ -141,6 +141,8 @@ def topology() -> dict:
 
 # ── 설정 읽기(numpy 보다 먼저 도는 시점이라 server 모듈을 못 쓴다) ──
 def _writable_root() -> Path:
+    if os.environ.get("IO_STATE_DIR"):
+        return Path(os.environ["IO_STATE_DIR"]).expanduser().resolve()
     if getattr(sys, "frozen", False):
         return Path(sys.executable).parent
     return Path(__file__).resolve().parents[1]

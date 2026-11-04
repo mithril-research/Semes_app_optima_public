@@ -51,7 +51,7 @@ TORCH = BACKEND == "torch"
 print(f"[spec] WES7 추론 백엔드: {'torch(.pt)' if TORCH else 'onnxruntime(.onnx)'}")
 
 # ── 서드파티 수집 ──
-_pkgs = ["matplotlib", "pandas"] + (["torch"] if TORCH else ["onnxruntime"])
+_pkgs = ["matplotlib", "pandas", "sklearn", "joblib", "scipy"] + (["torch"] if TORCH else ["onnxruntime"])
 if WEBVIEW:
     _pkgs += ["webview", "clr_loader"]                   # pywebview + .NET 로더
 for pkg in _pkgs:

@@ -1633,7 +1633,7 @@ def _sensor_family(A, name: str) -> str:
         return "P"
     if text.startswith("t_"):
         return "T"
-    if text.startswith("d_"):
+    if text.startswith("D_"):
         return "D"
     return "OTHER"
 
@@ -3158,8 +3158,8 @@ def plot_recon_sensor(A, rec, j, actual, expected, z, out_path,
     matplotlib.use("Agg")
     _setup_font()
     import matplotlib.pyplot as plt
-    t_full = actual.shape[0]
-    plot_keep, orig_idx, t, step_plot, bounds, spans = _plot_time_filter(A, rec, t_full)
+    T_full = actual.shape[0]
+    plot_keep, orig_idx, t, step_plot, bounds, spans = _plot_time_filter(A, rec, T_full)
     if orig_idx.size == 0:
         return
     cur, exp, zc = actual[plot_keep, j], expected[plot_keep, j], z[plot_keep, j]
@@ -3170,8 +3170,8 @@ def plot_recon_sensor(A, rec, j, actual, expected, z, out_path,
 
     fig, (axT, axB) = plt.subplots(2, 1, figsize=(20, 7.5),
                                    gridspec_kw={"height_ratios": [2.3, 1]}, sharex=True)
-    sigma_raw = _sigma_series(A, rec, j, t_full)[plot_keep]
-    ok_limit = _limit_series(A, rec, j, t_full)[plot_keep]
+    sigma_raw = _sigma_series(A, rec, j, T_full)[plot_keep]
+    ok_limit = _limit_series(A, rec, j, T_full)[plot_keep]
     resid_sigma, large_mask = _large_residual_mask(cur, exp, sigma_raw, large_sigma)
     _, large_events = _expanded_highlight_mask(large_mask, resid_sigma, min_highlight_width)
     large_events = _filter_isolated_step_transition_events(
@@ -3220,7 +3220,7 @@ def plot_recon_sensor(A, rec, j, actual, expected, z, out_path,
         curve_full = _curve_to_view_full(rec, raw_curve) if raw_curve is not None else None
         accum = (
             curve_full[plot_keep]
-            if curve_full is not None and len(curve_full) == t_full
+            if curve_full is not None and len(curve_full) == T_full
             else None
         )
     else:
@@ -3521,8 +3521,8 @@ def plot_recon_overlay(A, rec, out_path, top_k=None, pre=None, threshold=None) -
 
     actual, expected, z = pre if pre is not None else _compute(A, rec)
     sensors = list(A.sensor_cols)
-    t_full = actual.shape[0]
-    plot_keep, orig_idx, t, step_plot, bounds, spans = _plot_time_filter(A, rec, t_full)
+    T_full = actual.shape[0]
+    plot_keep, orig_idx, t, step_plot, bounds, spans = _plot_time_filter(A, rec, T_full)
     if orig_idx.size == 0:
         return
     T = len(t)
@@ -3551,8 +3551,8 @@ def plot_recon_overlay(A, rec, out_path, top_k=None, pre=None, threshold=None) -
         j = order[idx]
         cur, exp = actual[plot_keep, j], expected[plot_keep, j]
         zc = z[plot_keep, j]
-        sigma_raw = _sigma_series(A, rec, j, t_full)[plot_keep]
-        ok_limit = _limit_series(A, rec, j, t_full)[plot_keep]
+        sigma_raw = _sigma_series(A, rec, j, T_full)[plot_keep]
+        ok_limit = _limit_series(A, rec, j, T_full)[plot_keep]
         resid_sigma, large_mask = _large_residual_mask(cur, exp, sigma_raw, large_sigma)
         _, large_events = _expanded_highlight_mask(large_mask, resid_sigma, min_highlight_width)
         large_events = _filter_isolated_step_transition_events(
@@ -3633,7 +3633,7 @@ def plot_recon_heatmap(A, rec, out_path, vmax: float = 5.0, z_pre=None) -> None:
 def build_sensor_findings(A, rec, actual, expected, z, order, top_n: int = 12) -> list[Dict]:
     """Build wafer-level sensor finding rows from already computed arrays."""
     rows = []
-    t_full = actual.shape[0]
+    T_full = actual.shape[0]
     step = rec.get("step")
     sig = float(getattr(A.cfg, "raw_error_level", 1.0))
     rank = graph_sensor_rank(A.sensor_cols, A.cfg)
@@ -3645,10 +3645,10 @@ def build_sensor_findings(A, rec, actual, expected, z, order, top_n: int = 12) -
         raw = float(actual[ti, j])
         exp = float(expected[ti, j])
         raw_abs = abs(raw - exp)
-        ok_lim = float(_limit_series(A, rec, j, t_full)[ti])
-        sigma_raw = float(_sigma_series(A, rec, j, t_full)[ti])
+        ok_lim = float(_limit_series(A, rec, j, T_full)[ti])
+        sigma_raw = float(_sigma_series(A, rec, j, T_full)[ti])
         resid_sigma = raw_abs / max(sigma_raw, 1e-12)
-        peak_step = int(step[ti]) if step is not None and len(step) == t_full else None
+        peak_step = int(step[ti]) if step is not None and len(step) == T_full else None
         drivers = _io_drivers(A, rec, j, at_t=ti, top_k=2)
         row = {
             "wafer_id": rec["wafer_id"],

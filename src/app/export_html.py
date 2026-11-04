@@ -11,6 +11,7 @@
 import base64
 import json
 from pathlib import Path
+from src import sensor_names as SN
 
 # 대시보드 계산 + 상세/설정 라우팅 mock. WAFERS/DETAIL/CFG 는 아래에서 JSON 으로 주입.
 _MOCK_TMPL = r"""
@@ -788,6 +789,7 @@ def _inline_font(html: str, static_dir) -> str:
 def build_export_html(index_html: str, wafers: list, detail: dict, cfg: dict,
                       static_dir=None) -> str:
     """index.html 원문 + 스냅샷(WAFERS/DETAIL/CFG) → 단일 데모 HTML 문자열."""
+    wafers, detail, cfg = SN.normalize(wafers), SN.normalize(detail), SN.normalize(cfg)
     cfg = dict(cfg)
     features = dict(cfg.get("export_features") or {"scores": True, "trends": True, "detail": True})
     features.setdefault("chamber_means", features.get("trends", True))

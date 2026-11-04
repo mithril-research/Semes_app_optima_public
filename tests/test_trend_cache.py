@@ -36,8 +36,9 @@ class TrendCacheTests(unittest.TestCase):
         self.assertEqual(self.cache.get(self.path, 'm', build), {'size': 14})
         self.path.unlink()
         self.assertIsNone(self.cache.get(self.path, 'm', build))
-        self.path.write_bytes(b'restored')
-        self.assertEqual(self.cache.get(self.path, 'm', build), {'size': 8})
+        # A distinct size avoids relying on timestamp precision or inode reuse.
+        self.path.write_bytes(b'restored archive')
+        self.assertEqual(self.cache.get(self.path, 'm', build), {'size': 16})
         self.assertEqual(build.call_count, 4)
 
     def test_simultaneous_panels_compute_once(self):

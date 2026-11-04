@@ -80,7 +80,7 @@ class ExportFeaturesTests(unittest.TestCase):
         fn = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'api_export_html')
         fn.decorator_list = []
         archive = dict(actual=np.array([[10., 20.], [30., 40.]]),
-                       step=np.array([1, 2]), meta={'sensor_cols': ['p_test', 't_test']})
+                       step=np.array([1, 2]), meta={'sensor_cols': ['P_900', 'T_900']})
         ns = dict(Dict=dict, dt=dt, re=re, json=json, STATIC=Path('src/app/static'),
                   ENGINE=SimpleNamespace(load=lambda: None),
                   api_scatter=lambda **kw: {'points': [{'wafer_id': 'w1', 'ts': '2026-09-28T12:00:00'}]},
@@ -117,22 +117,22 @@ class ExportFeaturesTests(unittest.TestCase):
             self.assertEqual(cfg['trend_export']['metrics'], ['std'])
             self.assertEqual(bool(cfg['step_times']), trends)
             if trends:
-                self.assertEqual(cfg['step_times']['2026-09-28/w1']['sensor_metrics']['mean']['p_test']['1'], 10.)
-                self.assertEqual(cfg['step_times']['2026-09-28/w1']['sensor_metrics']['min']['p_test']['2'], 30.)
-                self.assertEqual(cfg['step_times']['2026-09-28/w1']['sensor_metrics']['std']['p_test']['1'], 0.)
+                self.assertEqual(cfg['step_times']['2026-09-28/w1']['sensor_metrics']['mean']['P_900']['1'], 10.)
+                self.assertEqual(cfg['step_times']['2026-09-28/w1']['sensor_metrics']['min']['P_900']['2'], 30.)
+                self.assertEqual(cfg['step_times']['2026-09-28/w1']['sensor_metrics']['std']['P_900']['1'], 0.)
             if not trends:
                 self.assertEqual(row['series'], [])
             cfg['sensor_differences']['test_marker'] = 'DETECTION_MEANS_PRESENT'
             html = build_export_html('<script></script>', [], {}, cfg)
             self.assertIn('DETECTION_MEANS_PRESENT', html)
-        archive['meta']['sensor_cols'] = ['s_010_PV', 's_011_PV']
+        archive['meta']['sensor_cols'] = ['S_904', 'S_902']
         with patch('src.app.export_html.build_export_html', return_value='snapshot') as build:
             ns['api_export_html'](include_scores=False, include_detail=False, include_trends=False,
-                include_differences=True, trend_pairs=json.dumps([['s_010_PV', 's_011_PV']]))
+                include_differences=True, trend_pairs=json.dumps([['S_904', 'S_902']]))
             row = build.call_args.args[3]['sensor_differences']['2026-09-28/w1']
-        self.assertEqual(row['series'][-1]['left'], 's_010_PV')
+        self.assertEqual(row['series'][-1]['left'], 'S_904')
         self.assertEqual(row['series'][-1]['export_step_stats']['1']['mean'], -10.)
-        self.assertEqual({s['sensor'] for s in row['sensor_series']}, {'s_010_PV','s_011_PV'})
+        self.assertEqual({s['sensor'] for s in row['sensor_series']}, {'S_904','S_902'})
         from starlette.exceptions import HTTPException
         ns['HTTPException'] = HTTPException
         for bad in ['null', '{}', '[1]', '[["A","A"]]', 'not-json']:

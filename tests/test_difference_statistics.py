@@ -11,7 +11,7 @@ from src.app.sensor_differences import difference_series
 class DifferenceStatisticsTests(unittest.TestCase):
     def test_signed_population_stats_and_missing_steps(self):
         arch=dict(actual=np.array([[999,0],[1,0],[3,0],[-2,0],[np.nan,0]]),
-                  step=np.array([0,1,1,3,3]),meta={'sensor_cols':['p_008','p_007']})
+                  step=np.array([0,1,1,3,3]),meta={'sensor_cols':['p_008_PV','p_007_PV']})
         r=difference_series(arch);s=r['series'][0]['step_stats']
         self.assertEqual(s['1'],dict(mean=2.,min=1.,max=3.,std=1.,count=2))
         self.assertEqual(s['3']['std'],0)
@@ -20,19 +20,19 @@ class DifferenceStatisticsTests(unittest.TestCase):
         json.dumps(r,allow_nan=False)
 
     def test_no_synthetic_statistics_for_missing_pair(self):
-        r=difference_series(dict(actual=np.ones((2,1)),step=np.array([1,1]),meta={'sensor_cols':['p_008']}))
+        r=difference_series(dict(actual=np.ones((2,1)),step=np.array([1,1]),meta={'sensor_cols':['p_008_PV']}))
         self.assertEqual(r['series'][0]['step_stats'],{})
 
     def test_individual_sensor_stats_use_measurements_and_preserve_names(self):
         arch=dict(actual=np.array([[999.,1.],[2.,10.],[4.,14.],[np.nan,20.]]),
-                  step=np.array([0,1,1,2]),meta={'sensor_cols':['t_Test_PV','p_Test_PV']},
+                  step=np.array([0,1,1,2]),meta={'sensor_cols':['S_911','S_908']},
                   z=np.full((4,2),9999.))
         rows={r['sensor']:r['step_stats'] for r in difference_series(arch)['sensor_series']}
-        self.assertEqual(rows['t_Test_PV']['1'],dict(mean=3.,min=2.,max=4.,std=1.,count=2))
-        self.assertEqual(rows['p_Test_PV']['1']['std'],2.)
-        self.assertNotIn('0',rows['t_Test_PV'])
-        self.assertNotIn('2',rows['t_Test_PV'])
-        self.assertEqual(rows['p_Test_PV']['2']['mean'],20.)
+        self.assertEqual(rows['S_911']['1'],dict(mean=3.,min=2.,max=4.,std=1.,count=2))
+        self.assertEqual(rows['S_908']['1']['std'],2.)
+        self.assertNotIn('0',rows['S_911'])
+        self.assertNotIn('2',rows['S_911'])
+        self.assertEqual(rows['S_908']['2']['mean'],20.)
 
     @unittest.skipUnless(shutil.which('gjs'),'SpiderMonkey required')
     def test_equal_step_weights_population_std_and_filtered_summary(self):

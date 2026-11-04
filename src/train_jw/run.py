@@ -28,7 +28,7 @@ if __package__ in (None, ""):
     __package__ = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
 from .config import (
-    h_SENSOR_PRESETS,
+    H_SENSOR_PRESETS,
     IOConfig,
     SENSOR_ROLE_PROFILE_H_SPLIT_V1,
     h_sensor_keep_for_config,
@@ -3689,14 +3689,14 @@ def main():
                     choices=["all", "heater-block3", "heater_block3", "heater-12", "heater_12"],
                     default="all",
                     help=("H sensor 입력/복원 대상 preset. all=기존 전체 H, "
-                          "heater-block3=h_005 계열 3개만, "
+                          "heater-block3=h_005_PV 계열 3개만, "
                           "heater-12=리저버/베셀/히터블럭 12개만."))
     ap.add_argument("--sensor-role-profile",
                     choices=["original", "h-split-v1", "h_split_v1"],
                     default="original",
                     help=("센서 입출력 역할 프로파일. original=기존 방식. "
-                          "h-split-v1=미래 입력은 IO+h_005 3종+Cart 10종, "
-                          "복원 대상은 P/T+h_010+Vessel heater 8종."))
+                          "h-split-v1=미래 입력은 IO+h_005_PV 3종+Cart 10종, "
+                          "복원 대상은 P/T+h_010_PV+Vessel heater 8종."))
     ap.add_argument("--cylinder-mode", choices=["off", "input", "predict"], default=None,
                     help="실린더 센서 역할: 입력 전용 또는 예측 대상")
     ap.add_argument("--cylinder-diff", action="store_true", default=None,
@@ -3807,7 +3807,7 @@ def main():
             ap.error("--sensor-role-profile h-split-v1은 미래 H 입력 프로파일이므로 "
                      "--future-h-mode input과 함께 사용해야 합니다.")
     if cfg.h_sensor_preset:
-        cfg.h_sensor_keep = tuple(h_SENSOR_PRESETS[cfg.h_sensor_preset])
+        cfg.h_sensor_keep = tuple(H_SENSOR_PRESETS[cfg.h_sensor_preset])
     cfg.cylinder_mode = args.cylinder_mode or "off"
     cfg.cylinder_diff = bool(args.cylinder_diff)
     cfg.cylinder_mode_request = args.cylinder_mode

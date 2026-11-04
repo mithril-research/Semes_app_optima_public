@@ -287,8 +287,8 @@ log 파일은 건너뛰고 경고 CSV에 기록합니다.
 
 - With H sensors: past `T/P/H/IO` plus future `H/IO` predicts future `T/P`.
 - With `--sensor-role-profile h-split-v1`: past `T/P/target-H/input-H/IO`
-  plus future `h_005/Cart/IO` predicts future
-  `T/P/h_010/VesselHeater`.
+  plus future `h_005_PV/Cart/IO` predicts future
+  `T/P/h_010_PV/VesselHeater`.
 - Without H sensors: past `T/P/IO` plus future `IO` predicts future `T/P`.
 - Future target `T/P` values are masked from the input.
 - All `ProcessStep == 0` regions are usable as input context, but are excluded from training loss, score, heatmap, and explanation highlight metrics.
@@ -349,7 +349,7 @@ For operator compatibility, `transformer-search`, `transformer-export`, and
 | `--report-dir` | 미사용 | 사용 | report 절대/상대 경로 직접 지정<br>지정하면 `--report-name` 무시. 같은 경로가 이미 있으면 `_try01`, `_try02` 순서로 새 폴더 생성 | `str` | `reports/<report-name>` |
 | `--h-cart-mode` | 사용 | 사용 | Cart 이름이 들어간 H sensor 포함/제외<br>`--sensor-role-profile h-split-v1`에서는 `exclude` 에러 | ` include, exclude` | 필수  |
 | `--h-sensor-preset` | 사용 | 사용 | H sensor 입력/복원 대상 preset<br>`all`은 preset 미사용. `--sensor-role-profile h-split-v1`에서는 `all`만 허용되고 다른 preset은 에러. `tcn-explain`은 저장된 모델 schema가 우선 | `all, heater-block3, heater-12` | `all` |
-| `--sensor-role-profile` | 사용 | 사용 | 센서 입출력 역할 프로파일 선택<br>`original`은 기존 센서 역할 방식. `h-split-v1`은 future input을 IO+h_005 3종+Cart 10종으로, target을 P/T+h_010+Vessel heater 8종으로 사용<br>기존 저장 metadata의 `legacy` 값은 호환 alias로 인식 | `original, h-split-v1` | `original` |
+| `--sensor-role-profile` | 사용 | 사용 | 센서 입출력 역할 프로파일 선택<br>`original`은 기존 센서 역할 방식. `h-split-v1`은 future input을 IO+h_005_PV 3종+Cart 10종으로, target을 P/T+h_010_PV+Vessel heater 8종으로 사용<br>기존 저장 metadata의 `legacy` 값은 호환 alias로 인식 | `original, h-split-v1` | `original` |
 | `--future-h-mode` | 사용 | 사용 | 미래 H를 입력으로 쓸지, 예측 대상으로 넣을지 선택<br>`--sensor-role-profile h-split-v1`에서는 `input`만 허용되고 `predict`는 에러. `tcn-explain`은 저장된 모델 schema가 우선 | `input, predict` | `input` |
 | `--virtual-sensor-mode` | 사용 | 사용 | 가상 센서 사용 위치 지정<br>`--virtual-sensors`를 쓰면 `both`로 강제되어 이 값은 무시됨 | `off, input, target, both` | `off` |
 | `--virtual-sensors` | 사용 | 사용 | 가상 센서를 input+target 모두에 사용<br> 지정 시 `--virtual-sensor-mode both`와 동일. `--virtual-sensor-mode` 값을 덮어씀 | `store_true` | 미사용 |
@@ -650,11 +650,11 @@ For operator compatibility, `transformer-search`, `transformer-export`, and
 ### 2026-07-21 13:40:24 KST
 
 - Added `--sensor-role-profile h-split-v1`.
-- In this profile, future inputs are IO, the 3 h_005 sensors, and the
+- In this profile, future inputs are IO, the 3 h_005_PV sensors, and the
   10 sensors whose names contain `Cart`; reconstruction targets are P/T,
   `h_010_PV`, and the 8 Vessel heater sensors.
 - Added safety checks for exactly 10 Cart sensors, exactly the 3 named
-  h_005 sensors, and exactly 8 Vessel heater target sensors.
+  h_005_PV sensors, and exactly 8 Vessel heater target sensors.
 - `--sensor-role-profile h-split-v1` now rejects `--h-cart-mode exclude`.
 
 ### 2026-07-21 13:00:04 KST

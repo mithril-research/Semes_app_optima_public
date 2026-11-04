@@ -49,7 +49,7 @@ except Exception as _e:                                  # noqa: BLE001
 #   "unable to find pandas-x.dist-info" 복사에러를 냈다. 자동 훅(hook-pandas)이 필요한 것만
 #   (테스트 제외, ~57개) 수집하므로 pandas 는 자동 훅에 맡긴다(앱의 import pandas 로 번들됨).
 from PyInstaller.utils.hooks import copy_metadata as _copy_meta
-for pkg in ("onnxruntime", "webview",
+for pkg in ("onnxruntime", "webview", "sklearn", "joblib", "scipy",
             "pythonnet", "clr_loader", "cffi"):
     try:
         binaries += collect_dynamic_libs(pkg)            # 네이티브 DLL(.pyd/.dll)

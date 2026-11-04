@@ -11,13 +11,13 @@ class ChamberAutoTests(unittest.TestCase):
   checks=r'''
 function ok(v,m){if(!v)throw Error(m);}
 var pts=[],rows={};
-function add(ch,recipe,values){values.forEach(function(v,i){var id=ch+recipe+i,ts='2026-10-15T10:00:0'+i;pts.push({wafer_id:id,ts:ts,chamber:ch,recipe:recipe});rows['2026-10-15/'+id]={valve_phases:{version:2,status:'ok',steps:{supply:[1],wait:[2],process:[3,4],discharge:[5]}},sensor_series:[{sensor:'p_test',step_stats:{1:{mean:5},2:{mean:5},3:{mean:v},4:{mean:v},5:{mean:5}}},{sensor:'t_test',step_stats:{1:{mean:100},2:{mean:100},3:{mean:100},4:{mean:100},5:{mean:100}}}]};});}
+function add(ch,recipe,values){values.forEach(function(v,i){var id=ch+recipe+i,ts='2026-10-15T10:00:0'+i;pts.push({wafer_id:id,ts:ts,chamber:ch,recipe:recipe});rows['2026-10-15/'+id]={valve_phases:{version:2,status:'ok',steps:{supply:[1],wait:[2],process:[3,4],discharge:[5]}},sensor_series:[{sensor:'P_900',step_stats:{1:{mean:5},2:{mean:5},3:{mean:v},4:{mean:v},5:{mean:5}}},{sensor:'T_900',step_stats:{1:{mean:100},2:{mean:100},3:{mean:100},4:{mean:100},5:{mean:100}}}]};});}
 add('dsv1','A',[10,11,12]);add('dsv2','A',[10,11,12]);add('dsv3','A',[20,21,22]);
 var result=chamberMeanAuto(pts,rows);ok(result.ranked.length===1,'only different phase ranked');var top=result.ranked[0];ok(top.part==='phase:process'&&top.label==='공정','phase only');ok(top.chamber==='dsv3','outlier chamber');ok(top.mean===21&&top.reference===11,'correct averages');ok(top.score===10,'within chamber normalized');ok(top.chambers.length===3,'peer traces');ok(top.chambers[0].points.length===3,'wafer points');
 ok(JSON.stringify(chamberMeanAuto(pts,rows,{sensors:null,phases:null}))===JSON.stringify(result),'default all unchanged');
-ok(chamberMeanAuto(pts,rows,{sensors:['t_test']}).ranked.length===0,'excluded pressure outlier');
+ok(chamberMeanAuto(pts,rows,{sensors:['T_900']}).ranked.length===0,'excluded pressure outlier');
 ok(chamberMeanAuto(pts,rows,{phases:['supply','wait']}).ranked.length===0,'excluded process outlier');
-ok(chamberMeanAuto(pts,rows,{sensors:['p_test','t_test'],phases:['process','discharge']}).ranked[0].score===10,'multiple selections retain result');
+ok(chamberMeanAuto(pts,rows,{sensors:['P_900','T_900'],phases:['process','discharge']}).ranked[0].score===10,'multiple selections retain result');
 ok(chamberMeanAuto(pts,rows,{sensors:[]}).compared===0,'empty sensor selection');
 ok(chamberMeanAuto(pts,rows,{phases:[]}).compared===0,'empty phase selection');
 ok(chamberMeanAuto(pts.concat(pts),rows).ranked[0].chambers[0].points.length===3,'deduplicate wafers');

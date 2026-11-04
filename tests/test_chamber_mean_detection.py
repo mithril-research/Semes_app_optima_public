@@ -15,7 +15,7 @@ class ChamberMeanDetectionTests(unittest.TestCase):
         checks = r'''
 function assert(v,m){if(!v)throw Error(m);}
 var phasePoints=[],phaseRows={};
-[22,26].forEach(function(end){['dsv1','dsv2','dsv3'].forEach(function(ch){var p={wafer_id:ch+'_'+end,ts:'2026-10-01T12:00:00',recipe:'recipe'+end,chamber:ch};phasePoints.push(p);var table={};for(var st=1;st<=end;st++)table[st]={mean:st+(ch==='dsv3'?100:0)};phaseRows['2026-10-01/'+p.wafer_id]={valve_phases:{version:2,status:'ok',steps:{discharge:[end-1,end]}},sensor_series:[{sensor:'p_test',step_stats:table}]};});});
+[22,26].forEach(function(end){['dsv1','dsv2','dsv3'].forEach(function(ch){var p={wafer_id:ch+'_'+end,ts:'2026-10-01T12:00:00',recipe:'recipe'+end,chamber:ch};phasePoints.push(p);var table={};for(var st=1;st<=end;st++)table[st]={mean:st+(ch==='dsv3'?100:0)};phaseRows['2026-10-01/'+p.wafer_id]={valve_phases:{version:2,status:'ok',steps:{discharge:[end-1,end]}},sensor_series:[{sensor:'P_900',step_stats:table}]};});});
 var phaseResult=chamberMeanDifferences(phasePoints,phaseRows,{stepMode:'discharge',minimum:1,mode:'absolute',pressure:75,temperature:75});
 assert(phaseResult.found.length===2,'recipe-specific discharge detection');
 assert(phaseResult.found.some(r=>r.recipe==='recipe22'&&r.step==='배출'&&r.mean===121.5),'22 steps chamber comparison');
@@ -24,7 +24,7 @@ assert(phaseResult.found.some(r=>r.recipe==='recipe26'&&r.step==='배출'&&r.mea
 var missingPhases=JSON.parse(JSON.stringify(phaseRows));Object.values(missingPhases).forEach(function(r){delete r.valve_phases;});
 assert(chamberMeanDifferences(phasePoints,missingPhases,{stepMode:'discharge',minimum:1,mode:'absolute',pressure:75,temperature:75}).phaseMissing===6,'no fixed-range fallback');
 var dynamicPoints=[{wafer_id:'a',ts:'2026-10-01',recipe:'same',chamber:'dsv1'},{wafer_id:'b',ts:'2026-10-01',recipe:'same',chamber:'dsv2'}];
-var dynamicRows={'2026-10-01/a':{valve_phases:{version:2,status:'ok',steps:{supply:[1,2]}},sensor_series:[{sensor:'p_test',step_stats:{1:{mean:10},2:{mean:20}}}]},'2026-10-01/b':{valve_phases:{version:2,status:'ok',steps:{supply:[1,2,3]}},sensor_series:[{sensor:'p_test',step_stats:{1:{mean:30},2:{mean:40},3:{mean:50}}}]}};
+var dynamicRows={'2026-10-01/a':{valve_phases:{version:2,status:'ok',steps:{supply:[1,2]}},sensor_series:[{sensor:'P_900',step_stats:{1:{mean:10},2:{mean:20}}}]},'2026-10-01/b':{valve_phases:{version:2,status:'ok',steps:{supply:[1,2,3]}},sensor_series:[{sensor:'P_900',step_stats:{1:{mean:30},2:{mean:40},3:{mean:50}}}]}};
 var dynamicResult=chamberMeanDifferences(dynamicPoints,dynamicRows,{stepMode:'supply',minimum:1,mode:'absolute',pressure:1,temperature:1});
 assert(dynamicResult.found.length===2&&dynamicResult.found.find(r=>r.chamber==='dsv1').mean===15&&dynamicResult.found.find(r=>r.chamber==='dsv2').mean===40,'compare phase means with wafer-specific boundaries');
 var pts=[],rows={};
@@ -48,7 +48,7 @@ opt.mode='percent';opt.pressure=40;assert(chamberMeanDifferences(pts,rows,opt).f
 opt.minimum=4;assert(chamberMeanDifferences(pts,rows,opt).compared===0,'minimum sample count');
 opt.minimum=3;
 var before=chamberMeanDifferences(pts,rows,opt);pts.push(pts[0]);assert(chamberMeanDifferences(pts,rows,opt).wafers===before.wafers,'deduplicate wafer');
-add('dsv1',9999,'B');add('dsv1',9999,'A',0);add('dsv1',NaN,'A',2);add('dsv1',9999,'A',1,'p_sensor_SV');
+add('dsv1',9999,'B');add('dsv1',9999,'A',0);add('dsv1',NaN,'A',2);add('dsv1',9999,'A',1,'P_907');
 assert(chamberMeanDifferences(pts,rows,opt).found.length===1,'recipe/step/missing/setpoint separation');
 pts=[];rows={};opt.minimum=1;opt.mode='absolute';opt.temperature=5;
 add('dsv1',0,'A',2,'t_002_PV');add('dsv2',10,'A',2,'t_002_PV');

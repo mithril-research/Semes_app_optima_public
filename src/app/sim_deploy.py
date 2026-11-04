@@ -51,8 +51,8 @@ class FakeModel:
         self.name = name
         self.gain = gain                                  # 모델마다 다른 출력(교체 검증용)
         self.io_cols = ["9000002"]
-        self.input_sensor_cols = ["t_A", "p_B"]
-        self.sensor_cols = ["t_A", "p_B"]
+        self.input_sensor_cols = ["T_A", "P_B"]
+        self.sensor_cols = ["T_A", "P_B"]
         self.n_steps_global = 3
         self.cfg = replace(IOConfig(), io_keep=())
         self.score_norm = "none"
@@ -97,7 +97,7 @@ class FakeModel:
 
 def make_wafer(folder: Path, stem: str, level: float = 1.0):
     """설비 유입 흉내 — 안정된(오래된 mtime) .csv 한 장."""
-    rows = ["Time,ProcessStep,9000002,t_A,p_B"]
+    rows = ["Time,ProcessStep,9000002,T_A,P_B"]
     for i in range(T):
         step = 0 if i < 5 else (1 if i < 25 else 2)
         rows.append(f"2026-09-04 00:{i:02d}:00,{step},1,"

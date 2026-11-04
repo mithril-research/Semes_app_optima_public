@@ -7,7 +7,6 @@ path.
 """
 from __future__ import annotations
 
-
 import argparse
 import csv
 import json
@@ -20,12 +19,12 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+from src.sensor_schema import in_group, paired_zone
 
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     __package__ = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
-from .sensor_schema import in_group, paired_zone
 from .config import IOConfig
 from .related_overlay import (
     Trace,
@@ -54,17 +53,17 @@ OVERLAY_CONTRIBUTION_TOP_K = 5
 SUSPECT_VALVE_HIGH_SLOPE_RATIO = 0.55
 SUSPECT_VALVE_TOP_K = 2
 FRONTLINE_PROMOTION_VALVE = "9000003"
-FRONTLINE_PROMOTION_SENSORS = {"tinnerblockpv", "tscco2supplypv"}
+FRONTLINE_PROMOTION_SENSORS = {"t002pv", "t005pv"}
 BACKLINE_PROMOTION_VALVE = "9000004"
-BACKLINE_PROMOTION_SENSORS = {"tinnerblockpv", "tbackfillpv"}
+BACKLINE_PROMOTION_SENSORS = {"t002pv", "t001pv"}
 METERING_EQUIVALENT_VALVES = ("9000006", "9000007", "9000008")
 METERING_EQUIVALENT_REPRESENTATIVE = "9000006"
 DEFAULT_H_ROLE_TOP_K = 2
-h_INFLUENCE_BASE_TOP_K = 3
+H_INFLUENCE_BASE_TOP_K = 3
 COUNTERFACTUAL_DELTA_CURVE_COLORS = {
-    "h_005pv": "#1f77b4",
-    "h_0052pv": "#ff7f0e",
-    "h_0053pv": "#2ca02c",
+    "h005pv": "#1f77b4",
+    "h0052pv": "#ff7f0e",
+    "h0053pv": "#2ca02c",
 }
 COUNTERFACTUAL_DELTA_CURVE_DEFAULT_COLOR = "#1f77b4"
 
@@ -1280,7 +1279,7 @@ def _merge_h_role_rows(base_rows: list[dict], h_rows: list[dict]) -> list[dict]:
 
 
 def _trim_overlay_rows_for_h_influence(rows: list[dict],
-                                       limit: int = h_INFLUENCE_BASE_TOP_K) -> list[dict]:
+                                       limit: int = H_INFLUENCE_BASE_TOP_K) -> list[dict]:
     ranked = sorted(list(rows or []), key=lambda row: (
         -float(row.get("increase_positive", 0.0) or 0.0),
         -float(row.get("current_contribution", 0.0) or 0.0),
@@ -2833,7 +2832,7 @@ def generate_rca_slope_valve_reports(
             "the same-recipe train OK actual-value mean when available"
         ),
         "h_role_policy": (
-            "disabled unless include_h_roles is true; when enabled, h_005* sensors "
+            "disabled unless include_h_roles is true; when enabled, h_005_PV* sensors "
             "are evaluated as H control variables and Vessel*Heater* sensors as H response "
             "variables. H response variables are treated like P/T response sensors and "
             f"can be shown only when their peak-step level is >= min_level "
@@ -2841,7 +2840,7 @@ def generate_rca_slope_valve_reports(
             "direction matches the combined direction of major "
             "P/T response sensors plus H response sensors, meaning an H influence conclusion. "
             f"In that case, base related sensors are trimmed to top "
-            f"{h_INFLUENCE_BASE_TOP_K} contribution sensors and top {int(h_role_top_k)} "
+            f"{H_INFLUENCE_BASE_TOP_K} contribution sensors and top {int(h_role_top_k)} "
             "H sensors per role are shown."
         ),
         "include_h_roles": bool(include_h_roles),
@@ -3061,7 +3060,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--min-level", type=float, default=1.0)
     ap.add_argument("--exclude-steps", default="0")
     ap.add_argument("--include-h-roles", action="store_true",
-                    help="H 제어변수(h_005*)와 H 반응변수(Vessel*Heater*)를 overlay/리포트에 포함")
+                    help="H 제어변수(h_005_PV*)와 H 반응변수(Vessel*Heater*)를 overlay/리포트에 포함")
     ap.add_argument("--h-role-top-k", type=int, default=DEFAULT_H_ROLE_TOP_K,
                     help="--include-h-roles 사용 시 H 제어/반응 역할별 추가 센서 수")
     ap.add_argument("--h-cart-mode", choices=["include", "exclude"], default="include")

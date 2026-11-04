@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import List
 
 import numpy as np
+from src import sensor_names as SN
 
 from .auxiliary_sensors import configure_auxiliary_model, validate_auxiliary_record
 from .config import IOConfig
@@ -26,7 +27,7 @@ class OnnxForecastModel:
     def __init__(self, onnx_path: Path, meta_path: Path, cfg: IOConfig):
         import onnxruntime as ort
         self._meta_path = Path(meta_path)
-        d = np.load(meta_path, allow_pickle=True)
+        d = SN.MetadataNPZ(np.load(meta_path, allow_pickle=True))
         self.wafer_score_override = override_from_npz(d)
         self.io_cols = [str(c) for c in d["io_cols"].tolist()]
         self.input_sensor_cols = [str(c) for c in d["input_sensor_cols"].tolist()]

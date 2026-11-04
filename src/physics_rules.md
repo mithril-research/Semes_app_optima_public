@@ -15,11 +15,11 @@
    (9000006 = SlowFill, 9000007 = QuickFill, 9000008 = QuickFill2)
 4. 세 밸브 중 하나라도 열리면 해당 Fill Heater 를 지나 T2, T3 로 나뉘는 두 배관
    전부로 유체가 공급된다.
-5. T2 기준으로 Front/Back 분기. Front 라인은 h_003 → Front_valve → h_0162
+5. T2 기준으로 Front/Back 분기. Front 라인은 h_003_PV → Front_valve → h_0162_PV
    → 9000003 IO 밸브까지 도달한다.
-6. T2 뒤 분기 배관은 h_0053(H16) → CO2BackFill(T3) → h_001 → h_002 →
+6. T2 뒤 분기 배관은 h_0053_PV(H16) → CO2BackFill(T3) → h_001_PV → h_002_PV →
    9000004 IO 밸브까지 도달한다. H16 존재로 보아 Back 이 Front 보다 길다고 추정.
-7. 9000003/9000004 중 열리는 밸브에 따라 P4(p_008)/P5(p_007)가
+7. 9000003/9000004 중 열리는 밸브에 따라 P4(p_008_PV)/P5(p_007_PV)가
    반응한다. Front·Back 모두 Vessel 로 공급된다.
 8. 9000004이 열리면 P5 상승. 기체가 Vessel 로 들어가며 Back 기체가 P4 배관까지
    도달하므로 P4 < P5 가 된다.
@@ -60,7 +60,7 @@
     "w_bulge": {"sensor": "t_003_PV", "step": 4, "delta": 0.5,
                 "min_rise_ratio": 0.2, "peak_pct": 80.0},
     "t_balance": {"result": "t_003_PV",
-                  "causes": ["t_002_PV", "t_001"],
+                  "causes": ["t_002_PV", "t_001_PV"],
                   "k": 3.0, "min_run": 5},
     "p_balance": {"result": "p_008_PV",
                   "causes": ["p_005_PV", "p_007_PV"],

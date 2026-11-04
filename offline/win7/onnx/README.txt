@@ -16,3 +16,8 @@ Validation: all dependency markers evaluated for Windows Python 3.8.10;
 142 PE binaries scanned with the repository Windows 7 compatibility checker.
 No flagged Windows 8+ static API imports. This is NOT a real Windows 7 run.
 Actual Windows installation/build and pip 21.1.1 execution remain unverified.
+
+2026-11-02 update: added scikit-learn 1.3.2, scipy 1.10.1, joblib 1.4.2, threadpoolctl 3.5.0.
+55 wheels total. Additional 190 PE binaries scanned with no flagged Windows 8+ static imports.
+Run WIN7_prepare.bat once after updating, then WIN7_build_only.bat. No internet needed.
+Actual Windows 7 execution remains unverified. sklearn model training version must match 1.3.2.

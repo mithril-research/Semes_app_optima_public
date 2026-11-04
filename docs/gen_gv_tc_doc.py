@@ -171,7 +171,7 @@ def make_xlsx(res):
     for r2 in ws3.iter_rows(min_row=2):
         for c in r2:
             c.alignment = wrap
-    fp = os.path.join(OUT, "골든비교_요구사항_TC_추적표.xlsx.txt.txt")
+    fp = os.path.join(OUT, "골든비교_요구사항_TC_추적표.xlsx")
     wb.save(fp)
     return fp
 

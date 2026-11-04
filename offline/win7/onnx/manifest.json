@@ -2,7 +2,7 @@
   "python": "3.8",
   "platform": "win_amd64",
   "backend": "onnx",
-  "requirements_sha256": "80c52dc7f38ed6481ed68b6646645403460b0e3f4b636e02ef16936e54ff8624",
+  "requirements_sha256": "a2be8214469acf5efac26ba034ec7be75d92e02568dd88bcf868eae2a7e97c47",
   "packages": [
     {
       "file": "altgraph-0.17.5-py2.py3-none-any.whl",
@@ -14,7 +14,7 @@
       "file": "anyio-3.7.1-py3-none-any.whl",
       "name": "anyio",
       "version": "3.7.1",
-      "sha256": "91dee416e570e92c64041bd18b900d1d6fa78dff7048769ce5ac5ddad004fbb5"
+      "sha256": "91dee416e570e92c64041bd18b900d1d6fa78dff7048769ce5ac5ddad001pvfbb5"
     },
     {
       "file": "bottle-0.13.4-py2.py3-none-any.whl",
@@ -117,6 +117,12 @@
       "name": "importlib_resources",
       "version": "6.4.5",
       "sha256": "ac29d5f956f01d5e4bb63102a5a19957f1b9175e45649977264a1416783bb717"
+    },
+    {
+      "file": "joblib-1.4.2-py3-none-any.whl",
+      "name": "joblib",
+      "version": "1.4.2",
+      "sha256": "06d478d5674cbc267e7496a410ee875abd68e4340feff4490bcb7afb88060ae6"
     },
     {
       "file": "kiwisolver-1.4.7-cp38-cp38-win_amd64.whl",
@@ -251,6 +257,18 @@
       "sha256": "8a1513379d709975552d202d942d9837758905c8d01eb82b8bcc30918929e7b8"
     },
     {
+      "file": "scikit_learn-1.3.2-cp38-cp38-win_amd64.whl",
+      "name": "scikit-learn",
+      "version": "1.3.2",
+      "sha256": "64381066f8aa63c2710e6b56edc9f0894cc7bf59bd71b8ce5613a4559b6145e0"
+    },
+    {
+      "file": "scipy-1.10.1-cp38-cp38-win_amd64.whl",
+      "name": "scipy",
+      "version": "1.10.1",
+      "sha256": "049a8bbf0ad95277ffba9b3b7d23e5369cc39e66406d60422c8cfef40ccc8415"
+    },
+    {
       "file": "setuptools-68.2.2-py3-none-any.whl",
       "name": "setuptools",
       "version": "68.2.2",
@@ -279,6 +297,12 @@
       "name": "sympy",
       "version": "1.13.3",
       "sha256": "54612cf55a62755ee71824ce692986f23c88ffa77207b30c1368eda4a7060f73"
+    },
+    {
+      "file": "threadpoolctl-3.5.0-py3-none-any.whl",
+      "name": "threadpoolctl",
+      "version": "3.5.0",
+      "sha256": "56c1e26c150397e58c4926da8eeee87533b1e32bef131bd4bf6a2f45f3185467"
     },
     {
       "file": "typing_extensions-4.13.2-py3-none-any.whl",

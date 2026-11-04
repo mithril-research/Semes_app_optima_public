@@ -2145,9 +2145,9 @@ function __dlBtns(nm,key,bidx){
  return s;}
 /* ── 고정 세트 저장: 카드 기간·장수 그대로 정해진 그래프를 항상 함께 내려받는다 ── */
 window.__FIXSET=[
- {t:'1_t_002',   s:['t_002_PV']},
+ {t:'1_t_002_PV',   s:['t_002_PV']},
  {t:'2_dP_3종오버레이', s:['dP_VslF-VslB','dP_VslF-Out','dP_VslB-Out'], st:[2,3,4,5]},
- {t:'3_t_003',       s:['t_003_PV']},
+ {t:'3_T_Outlet',       s:['t_003_PV']},
  {t:'4_dP_front-back',  s:['dP_VslF-VslB'],                            st:[2,3,4,5]}];
 function __ssFix(list){                     /* 고정 스텝 선택(없으면 현재 보기 그대로) */
  if(!list||!list.length)return null;
@@ -4534,11 +4534,11 @@ function __cellCol(zg,zr){                        /* 4상태 + 강도 계조(3σ
 function __segline(h){
  /* 센서명→구간 근사 매핑으로 '문제 구간' 헤드라인 생성(지도 데이터 기반) */
  var SEG=[["Reservoir",/^reservoir/i],["충전 미터링",/(slowfill|quickfill)/i],
-  ["공급 라인",/(leakdetect|h_0052?_|h_0161|p_005|h_015|t_005|t_002|h_005_)/i],
-  ["Front 상부 유입",/(h_003|h_004|h_0162|p_008|h_0053)/i],
-  ["Back 하부 유입",/(t_001|h_001|h_002|p_007)/i],
+  ["공급 라인",/(leakdetect|heaterblock2?_|supplyline1|p_scco2supply|supplyfilter|t_scco2supply|t_002_PV|heaterblock_)/i],
+  ["Front 상부 유입",/(frontfilter|frontvalve|supplyline2|p_scco2vesself|heaterblock3)/i],
+  ["Back 하부 유입",/(t_001_PV|backfilter|backvalve|p_scco2vesselback)/i],
   ["Vessel 상부",/^vesselup/i],["Vessel 하부",/^vesseldown/i],
-  ["챔버 주변",/^d_/i],["배기/벤트",/(h_006|p_003|t_003|pulsevent|slowvent|_press$)/i]];
+  ["챔버 주변",/^d_/i],["배기/벤트",/(outletvalve|p_scco2outlet|t_scco2outlet|pulsevent|slowvent|_press$)/i]];
  var agg={};
  for(var r=0;r<h.sensors.length;r++){
   var mz=0; for(var c=0;c<h.steps.length;c++){var v=h.maxz[r][c]; if(v!=null&&v>mz)mz=v;}
@@ -4851,8 +4851,8 @@ function __gvJtRender(sensors,steps,keep){
  var known=(keep.all&&keep.all.length)?keep.all:(hadRows?__gvJtState().all:null);
  if(!sensors||!sensors.length){host.style.display='none';host.innerHTML='';return;}
  var h='<b>반영 센서·민감도</b> <span style="color:#8a94a3">체크 해제한 센서는 불량 계산에서 빠지고 막대그래프가 바로 다시 그려집니다 · 센서 α 비우면 공통 α · [스텝별]을 열면 센서×스텝 α(우선순위: 센서×스텝 &gt; 센서 &gt; 스텝 &gt; 공통)</span>'
-  +' <a href="#" onclick="__gvJtPre(\\'t_\\',0.15);return false;" style="color:#2456a6">[T계열 둔감 0.15]</a>'
-  +' <a href="#" onclick="__gvJtPre(\\'p_\\',0.02);return false;" style="color:#2456a6">[P계열 민감 0.02]</a>'
+  +' <a href="#" onclick="__gvJtPre(\\'T_\\',0.15);return false;" style="color:#2456a6">[T계열 둔감 0.15]</a>'
+  +' <a href="#" onclick="__gvJtPre(\\'P_\\',0.02);return false;" style="color:#2456a6">[P계열 민감 0.02]</a>'
   +' <a href="#" onclick="__gvJtPre(\\'\\',null);return false;" style="color:#2456a6">[센서 α 전부 비움]</a>'
   +'<table style="border-collapse:collapse;margin-top:3px"><tr><th style="border:1px solid #dde3ea;padding:2px 6px">반영</th><th style="border:1px solid #dde3ea;padding:2px 6px">센서</th><th style="border:1px solid #dde3ea;padding:2px 6px">센서 α</th><th style="border:1px solid #dde3ea;padding:2px 6px">센서×스텝 α</th></tr>';
  sensors.forEach(function(sn){var on=!known?true:(keep.sel.indexOf(sn)>=0||known.indexOf(sn)<0);
@@ -5495,7 +5495,7 @@ def _formula_tokens(expr, cols):
             cand = [str(x) for x in cols
                     if kk and (kk in _re.sub(r"[^a-z0-9]", "", str(x).lower())
                                or _re.sub(r"[^a-z0-9]", "", str(x).lower()) in kk)]
-            if not cand:                               # 조각 단위(t_003 → outlet 등)
+            if not cand:                               # 조각 단위(T_outlet → outlet 등)
                 parts = [p for p in _re.split(r"[^a-z0-9]+", key) if len(p) >= 2]
                 if parts:
                     cand = [str(x) for x in cols
@@ -6621,10 +6621,10 @@ def _install_virtual(S):
 
 def _is_ctrl_sensor(sn):
     """판정 제외 센서: Vessel 추종형(Cart/Heater — SV 미상·목표 추종으로 상시 변동)과
-    H 라인 히터(h_005 — 자체 설정, 핵심 아님). 곡선은 보관하되 패턴 판정은 안 한다.
+    H 라인 히터(h_005_PV — 자체 설정, 핵심 아님). 곡선은 보관하되 패턴 판정은 안 한다.
     (사용자 결정: 히터류는 제어 여부를 알 수 없어 패턴 분석 불가)"""
     import re as _re2
-    return bool(_re2.search(r"(?i)(vessel(up|down)?(cart|heat))|h_005", str(sn)))
+    return bool(_re2.search(r"(?i)(vessel(up|down)?(cart|heat))|heaterblock", str(sn)))
 
 
 def _erode_mask(m, e=4):
@@ -7537,13 +7537,13 @@ def serve(S, groups, stats, folder, ok_max, model_name):
                  "",
                  RC2.analyze.__doc__ or "",
                  "## 배관 경로",
-                 "CO2공급원 -> Reservoir(H1~4,Vent) -> 밸브031 -> p_002 -> h_0052",
-                 "-> 충전미터링 -> h_0161 -> p_005 -> 필터 -> t_005 -> h_005",
-                 "-> t_002 -> 밸브032 분기 -> [상부: Front계열 -> p_008 -> VesselUp존]",
-                 "   [하부: h_0053 -> t_001 -> Back계열 -> p_007 -> VesselDown존]",
-                 "-> 웨이퍼 세정 -> Outlet -> t_003 -> PulseVent/SlowVent 배기",
+                 "CO2공급원 -> Reservoir(H1~4,Vent) -> 밸브031 -> p_002_PV -> h_0052_PV",
+                 "-> 충전미터링 -> h_0161_PV -> p_005_PV -> 필터 -> t_005_PV -> h_005_PV",
+                 "-> t_002_PV -> 밸브032 분기 -> [상부: Front계열 -> p_008_PV -> VesselUp존]",
+                 "   [하부: h_0053_PV -> t_001_PV -> Back계열 -> p_007_PV -> VesselDown존]",
+                 "-> 웨이퍼 세정 -> Outlet -> t_003_PV -> PulseVent/SlowVent 배기",
                  "## 센서 의미(사실)",
-                 "- VesselUp/h_030N_PV = 카트리지(열원) 출력 온도. VesselUp/DownHeat(er)N_PV = 존 외부 온도이자 목표(SV).",
+                 "- VesselUp/S_903 = 카트리지(열원) 출력 온도. VesselUp/DownHeat(er)S_906 = 존 외부 온도이자 목표(SV).",
                  "- 웨이퍼가 겪는 온도에 가까운 것은 Heater(존) 쪽. Cart 는 열원이 무리한 정도.",
                  "- H 라인 히터(필터/밸브/라인)는 자체 고정설정, 피드백 없음.",
                  "- 가스 T/P 만 배관 전파. scCO2: 과열->압력상승->벤트 증가->팽창냉각(배기 저온).",
@@ -11294,7 +11294,7 @@ def serve(S, groups, stats, folder, ok_max, model_name):
                              "peak_pct": 80.0},
                  # 계통 잔차(선형 혼합 모델) — 결과 ≈ Σw·원인 + b, w 는 골든 학습
                  "t_balance": {"result": "t_003_PV",
-                               "causes": ["t_002_PV", "t_001"],
+                               "causes": ["t_002_PV", "t_001_PV"],
                                "k": 3.0, "min_run": 5},
                  "p_balance": {"result": "p_008_PV",
                                "causes": ["p_005_PV",
@@ -14830,7 +14830,7 @@ def serve(S, groups, stats, folder, ok_max, model_name):
         return out9
 
     def _gv_rule_auto(sn9):
-        """센서 이름으로 모양 규칙 자동 활성: 출구 온도(t_·outlet) → W 봉우리, 전후 차압 → 아치 기울기."""
+        """센서 이름으로 모양 규칙 자동 활성: 출구 온도(T_·outlet) → W 봉우리, 전후 차압 → 아치 기울기."""
         t9 = str(sn9).lower()
         if t9.startswith("t_") and "outlet" in t9:
             return "wprom"

@@ -20,7 +20,7 @@ if __package__ in (None, ""):                            # 직접 실행 지원
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from src.train_jw.config import (                # noqa: E402
-    h_SENSOR_PRESETS, IOConfig, normalize_h_sensor_preset, normalize_sensor_role_profile,
+    H_SENSOR_PRESETS, IOConfig, normalize_h_sensor_preset, normalize_sensor_role_profile,
 )
 from src.train_jw import recon_explain as RX     # noqa: E402
 from src.train_jw.data import load_dataset       # noqa: E402
@@ -42,7 +42,7 @@ def build(artifacts_dir: Path, ok_dir: Path, out_dir: Path, opts: dict) -> Path:
     base.sensor_role_profile = normalize_sensor_role_profile(
         opts.get("sensor_role_profile") or "original")
     if base.h_sensor_preset:
-        base.h_sensor_keep = tuple(h_SENSOR_PRESETS[base.h_sensor_preset])
+        base.h_sensor_keep = tuple(H_SENSOR_PRESETS[base.h_sensor_preset])
     base.future_h_mode = str(opts.get("future_h_mode") or "input")
     base.virtual_sensor_mode = ("both" if opts.get("virtual_sensors")
                                 else str(opts.get("virtual_sensor_mode") or "off"))

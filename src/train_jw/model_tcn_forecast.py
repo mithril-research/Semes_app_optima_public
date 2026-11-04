@@ -14,25 +14,25 @@ normal future T/P behavior from the past trajectory and actuator/control state.
 """
 from __future__ import annotations
 
-
 import re
 import time
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
+from src import sensor_names as SN
+from src.sensor_schema import in_group, paired_zone
 import torch
 
-from .sensor_schema import in_group, paired_zone
 from .auxiliary_sensors import (auxiliary_sensor_columns, auxiliary_sensor_metadata,
                                 configure_auxiliary_model, validate_auxiliary_record)
 
 from .config import (
-    h_SPLIT_CART_COUNT,
-    h_SPLIT_HEATER_BLOCK_COUNT,
-    h_SPLIT_HEATER_BLOCK_SENSORS,
-    h_SPLIT_RESERVOIR_TARGET_SENSORS,
-    h_SPLIT_VESSEL_HEATER_COUNT,
+    H_SPLIT_CART_COUNT,
+    H_SPLIT_HEATER_BLOCK_COUNT,
+    H_SPLIT_HEATER_BLOCK_SENSORS,
+    H_SPLIT_RESERVOIR_TARGET_SENSORS,
+    H_SPLIT_VESSEL_HEATER_COUNT,
     IOConfig,
     SENSOR_ROLE_PROFILE_H_SPLIT_V1,
     h_sensor_keep_for_config,
@@ -211,14 +211,15 @@ class TCNForecastModel:
 
     @staticmethod
     def _is_h_split_heater_block_sensor(name: str) -> bool:
-        return str(name).strip() in set(h_SPLIT_HEATER_BLOCK_SENSORS)
+        return str(name).strip() in set(H_SPLIT_HEATER_BLOCK_SENSORS)
 
     @staticmethod
     def _is_h_split_reservoir_target_sensor(name: str) -> bool:
-        return str(name).strip() in set(h_SPLIT_RESERVOIR_TARGET_SENSORS)
+        return str(name).strip() in set(H_SPLIT_RESERVOIR_TARGET_SENSORS)
 
     @staticmethod
     def _is_h_split_vessel_heater_sensor(name: str) -> bool:
+        low = str(name).strip().lower()
         return in_group(name, "response")
 
     @staticmethod
@@ -275,22 +276,22 @@ class TCNForecastModel:
         ]
 
         self._validate_h_split_count(
-            "h_005", heater_block_cols, h_SPLIT_HEATER_BLOCK_COUNT)
-        expected_heater_blocks = set(h_SPLIT_HEATER_BLOCK_SENSORS)
+            "h_005_PV", heater_block_cols, H_SPLIT_HEATER_BLOCK_COUNT)
+        expected_heater_blocks = set(H_SPLIT_HEATER_BLOCK_SENSORS)
         found_heater_blocks = {str(c).strip() for c in heater_block_cols}
         if found_heater_blocks != expected_heater_blocks:
             raise ValueError(
-                "--sensor-role-profile h-split-v1 h_005 sensors mismatch: "
+                "--sensor-role-profile h-split-v1 h_005_PV sensors mismatch: "
                 f"expected {sorted(expected_heater_blocks)}, "
                 f"found {sorted(found_heater_blocks)}"
             )
-        self._validate_h_split_count("Cart", cart_cols, h_SPLIT_CART_COUNT)
+        self._validate_h_split_count("Cart", cart_cols, H_SPLIT_CART_COUNT)
         self._validate_h_split_count(
             "Reservoir target", reservoir_cols,
-            len(h_SPLIT_RESERVOIR_TARGET_SENSORS))
+            len(H_SPLIT_RESERVOIR_TARGET_SENSORS))
         self._validate_h_split_count(
             "Vessel heater target", vessel_heater_cols,
-            h_SPLIT_VESSEL_HEATER_COUNT)
+            H_SPLIT_VESSEL_HEATER_COUNT)
 
         future_h_names = {str(c).strip() for c in heater_block_cols + cart_cols}
         target_h_names = {
@@ -331,7 +332,7 @@ class TCNForecastModel:
         suffix = "+virtual" if target_virtual else ""
         self.schema_mode = (
             "h-split-v1: past T/P/target-H/input-H"
-            f"{suffix}+IO, future h_005/Cart+IO -> "
+            f"{suffix}+IO, future h_005_PV/Cart+IO -> "
             f"future T/P/Reservoir/VesselH{suffix}"
         )
 
@@ -619,10 +620,10 @@ class TCNForecastModel:
               f"| future_h_mode={self.arch['future_h_mode']} "
               f"| virtual_sensor_mode={self.arch['virtual_sensor_mode']} "
               f"| OK wafer={len(ok_records)} | IO={len(self.io_cols)} "
-              f"| input_sensor={len(self.input_sensor_cols)} | h_input={len(self.h_indices)} "
+              f"| input_sensor={len(self.input_sensor_cols)} | H_input={len(self.h_indices)} "
               f"(future H {future_h}, Cart H {cart_h}, virtual {input_virtual}) "
               f"| target_sensor={len(self.sensor_cols)} "
-              f"(h_target {target_h}, virtual_target {target_virtual}) | steps={self.n_steps_global}",
+              f"(H_target {target_h}, virtual_target {target_virtual}) | steps={self.n_steps_global}",
               flush=True)
 
         t0 = time.perf_counter()
@@ -1205,7 +1206,7 @@ class TCNForecastModel:
 
     @classmethod
     def load(cls, path: Path, cfg: IOConfig, device: Optional[str] = None):
-        d = torch.load(Path(path), map_location="cpu", weights_only=False)
+        d = SN.normalize(torch.load(Path(path), map_location="cpu", weights_only=False))
         m = cls(cfg, device)
         m.io_cols = d["io_cols"]
         m.input_sensor_cols = d.get("input_sensor_cols", d["sensor_cols"])

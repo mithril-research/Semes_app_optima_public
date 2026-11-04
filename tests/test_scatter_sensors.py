@@ -23,10 +23,10 @@ class ScatterSensorsTests(unittest.TestCase):
             if isinstance(n, ast.FunctionDef):
                 n.decorator_list = []
         self.reader = Mock(return_value={'sensors': [
-            {'sensor': 't_1', 'ratio': 3.75, 'score': 2.0},
-            {'sensor': 'p_1', 'ratio': 0.0},
-            {'sensor': 't_missing', 'ratio': None},
-            {'sensor': 'p_nan', 'ratio': float('nan')}]})
+            {'sensor': 'T_1', 'ratio': 3.75, 'score': 2.0},
+            {'sensor': 'P_1', 'ratio': 0.0},
+            {'sensor': 'T_905', 'ratio': None},
+            {'sensor': 'P_906', 'ratio': float('nan')}]})
         self.ns = dict(BaseModel=BaseModel, List=list, re=re, np=np,
                        HTTPException=HTTPException, _model_id=lambda: 'model-a',
                        _history_for_current_model=lambda: [{'wafer_id': 'w1'}, {'wafer_id': 'w2'}],
@@ -38,7 +38,7 @@ class ScatterSensorsTests(unittest.TestCase):
 
     def test_unclipped_ratio_zero_and_nonfinite(self):
         result = self.ns['api_scatter_sensors'](self.request())
-        self.assertEqual(result['wafers'][0]['scores'], {'t_1': 3.75, 'p_1': 0.0})
+        self.assertEqual(result['wafers'][0]['scores'], {'T_1': 3.75, 'P_1': 0.0})
 
     def test_missing_archive_is_gap_and_order_preserved(self):
         self.reader.side_effect = [HTTPException(404, 'missing'), {'sensors': []}]

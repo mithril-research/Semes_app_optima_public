@@ -78,7 +78,7 @@ class StepTimingTests(unittest.TestCase):
         from src.config import IOConfig
         with tempfile.TemporaryDirectory() as folder:
             root=Path(folder);source=root/'w.csv';cache=root/'cache';cache.mkdir()
-            source.write_text('Time,ProcessStep,p_test\n12:00:00,1,1\n12:00:03,2,2\n12:00:08,2,3\n')
+            source.write_text('Time,ProcessStep,P_900\n12:00:00,1,1\n12:00:03,2,2\n12:00:08,2,3\n')
             with patch('src.data._parse_cache_dir',return_value=cache),patch('src.data.add_virtual_sensors',side_effect=lambda df,cfg:df):
                 first=_parsed_frame(source,IOConfig())
                 with patch('src.data._read_csv',side_effect=AssertionError('must read cache')):

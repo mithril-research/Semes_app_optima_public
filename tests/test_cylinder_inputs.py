@@ -21,7 +21,7 @@ from src.onnx_backend_forecast import OnnxForecastModel
 class CylinderDataTests(unittest.TestCase):
     def setUp(self):
         self.cfg=IOConfig(cylinder_mode='input',cylinder_diff=True)
-        self.frame=pd.DataFrame({'ProcessStep':[0,1,1], 'p_test':[2.,3.,4.],
+        self.frame=pd.DataFrame({'ProcessStep':[0,1,1], 'P_900':[2.,3.,4.],
                                 'd_004_PV':[8.,9.,10.], 'd_001_PV':[3.,4.,5.],
                                 'v_011':[999.,999.,999.]})
 
@@ -67,8 +67,8 @@ class CylinderDataTests(unittest.TestCase):
         def model(mode='input'):
             cfg=IOConfig(cylinder_mode=mode,cylinder_diff=True)
             return SimpleNamespace(cfg=cfg,arch=auxiliary_sensor_metadata(cfg),
-                input_sensor_cols=['p_test','h_test',*CYLINDER_SENSORS,CYLINDER_DIFF_COLUMN],
-                sensor_cols=['p_test']+(list(CYLINDER_SENSORS)+[CYLINDER_DIFF_COLUMN] if mode=='predict' else []),
+                input_sensor_cols=['P_900','H_900',*CYLINDER_SENSORS,CYLINDER_DIFF_COLUMN],
+                sensor_cols=['P_900']+(list(CYLINDER_SENSORS)+[CYLINDER_DIFF_COLUMN] if mode=='predict' else []),
                 h_indices=[1],future_h_mode='input')
         m=model();configure_auxiliary_model(m,{})
         self.assertEqual(m.future_input_sensor_indices,[1,2,3,4])
@@ -82,7 +82,7 @@ class CylinderDataTests(unittest.TestCase):
         self.assertEqual(predicted.future_input_sensor_indices,[1])
         missing=model();missing.input_sensor_cols.remove('v_011')
         with self.assertRaises(AuxiliarySensorError):configure_auxiliary_model(missing,{})
-        old=model();old.arch={};old.input_sensor_cols=['p_test','h_test'];old.sensor_cols=['p_test'];configure_auxiliary_model(old,{})
+        old=model();old.arch={};old.input_sensor_cols=['P_900','H_900'];old.sensor_cols=['P_900'];configure_auxiliary_model(old,{})
         self.assertEqual(old.cfg.cylinder_mode,'off');self.assertFalse(old.cfg.cylinder_diff)
         self.assertEqual(old.future_input_sensor_indices,[1])
 
@@ -100,8 +100,8 @@ class CylinderInferenceTests(unittest.TestCase):
         mod=importlib.import_module(package+'.model_tcn_forecast')
         cfg=importlib.import_module(package+'.config').IOConfig(cylinder_mode=mode,cylinder_diff=True)
         cfg.h_cart_mode='exclude';cfg.use_step_onehot=True;cfg.score_final_avg=True
-        m=mod.TCNForecastModel(cfg,device='cpu');m.io_cols=['9000001'];m.n_steps_global=2
-        m._setup_sensor_schema(['p_test','h_test',*CYLINDER_SENSORS,'v_011'])
+        m=mod.TCNForecastModel(cfg,device='cpu');m.io_cols=['9000901'];m.n_steps_global=2
+        m._setup_sensor_schema(['P_900','H_900',*CYLINDER_SENSORS,'v_011'])
         m.w=2;m.h=2;m.stride=1
         m.input_sen_mean=np.arange(len(m.input_sensor_cols),dtype=float)
         m.input_sen_std=np.arange(1,len(m.input_sensor_cols)+1,dtype=float)
@@ -166,7 +166,7 @@ class CylinderInferenceTests(unittest.TestCase):
                     self.assertEqual(corrected['override_ratio'],1.01)
                     logs=folder/'logs';logs.mkdir()
                     frame=pd.DataFrame(rec['sensors'],columns=rec['sensor_cols'])
-                    frame['v_011']=999;frame['ProcessStep']=rec['step'];frame['9000001']=rec['io'][:,0]
+                    frame['v_011']=999;frame['ProcessStep']=rec['step'];frame['9000901']=rec['io'][:,0]
                     frame.to_csv(logs/'w.csv',index=False)
                     with patch.object(server,'ENGINE',EngineRouter(engine)), patch.object(server,'_load_app_config',return_value={}), patch.object(server,'_tag_file_meta'), patch.object(server,'_apply_cache_env'), patch.object(server,'_reader_cancel_check',return_value=None), patch.object(server,'_recipe_threshold',return_value=('recipe',4.)):
                         loaded,_,columns,coverage=server._load_aligned(logs)

@@ -14,14 +14,13 @@
 """
 from __future__ import annotations
 
-from .sensor_schema import in_group, paired_zone
-
 import json
 import os
 import re
 import urllib.request
 
 import numpy as np
+from src.sensor_schema import in_group, paired_zone
 
 Z_SIG = 3.0          # 유의 이탈(σ)
 CART_SIG_C = 3.0     # 카트리지-존 갭 유의(℃)
@@ -111,12 +110,10 @@ def analyze(wid, recipe, g, data, pred, steps_rs, ranks):
     # R1 ── Vessel 캐스케이드 갭 (최우선 신호)
     for zone in ("up", "down"):
         pairs = []
-        for s in sensors:
-            zsn, num = paired_zone(s, sensors, "upper" if zone == "up" else "lower")
-            if num is None:
-                continue
-            if zsn:
-                pairs.append((s, zsn, num))
+        for sensor in sensors:
+            paired, number = paired_zone(sensor, sensors, "upper" if zone == "up" else "lower")
+            if paired:
+                pairs.append((sensor, paired, number))
         for cart, zsn, num in pairs:
             wc = obs[cart]["worst"]; wz = obs[zsn]["worst"]
             if not wc or not wz:
@@ -147,7 +144,7 @@ def analyze(wid, recipe, g, data, pred, steps_rs, ranks):
 
     # R2 ── T/P 전파 체인(배관 경로 기준).
     #   ★ 기점 선정 규칙 교정(2026-09-08): 예전 '설치순 최상류 유의'는 대부분의 센서가
-    #     유의할 때 항상 같은 첫 센서(p_002)만 지목하는 고착이 있었다.
+    #     유의할 때 항상 같은 첫 센서(p_002_PV)만 지목하는 고착이 있었다.
     #     기점 = ①발화 센서(모델 잔차도 이탈) 중 onset 가장 이른 것 →
     #            ②발화가 없으면 골든 onset 가장 이른 것. 설치순은 동률일 때만.
     tp = [s for s in sensors if obs[s]["kind"] in ("T", "P") and obs[s]["sig"]]
@@ -180,9 +177,9 @@ def analyze(wid, recipe, g, data, pred, steps_rs, ranks):
             if re.search(name_pat, s2, re.I) and obs[s2]["worst"]:
                 return s2, obs[s2]["worst"]["dev"], obs[s2]["sig"]
         return None, None, False
-    t2n, t2d, t2s = _dev_of(r"t_002")
-    t3n, t3d, t3s = _dev_of(r"t_001")
-    t4n, t4d, t4s = _dev_of(r"t_003")
+    t2n, t2d, t2s = _dev_of(r"t_002_PV")
+    t3n, t3d, t3s = _dev_of(r"t_001_PV")
+    t4n, t4d, t4s = _dev_of(r"t_003_PV")
     if t4n is not None and (t2n is not None or t3n is not None):
         inflow = [(n2, d2) for n2, d2 in ((t2n, t2d), (t3n, t3d)) if n2 is not None]
         in_txt = " · ".join(f"{n2} {d2:+.1f}℃" for n2, d2 in inflow)
@@ -297,12 +294,12 @@ def analyze(wid, recipe, g, data, pred, steps_rs, ranks):
                else ", 모델 무반응=지속/전파 성격") + ")")
     flow_context = (
         "배관 경로(요약): CO2 공급원 → Reservoir(저장조, H1~4·Vent) → 밸브 031 → "
-        "p_002(P1) → h_0052 예열 → 충전 미터링(Slow/Quick) → h_0161 → "
-        "p_005(P2) → 필터 → t_005(T1) → h_005 예열 → t_002(T2) → "
-        "밸브 032 분기 → [상부: Front필터/밸브 → p_008(P4) → VesselUp 존(Heater=존온도, "
-        "Cart=열원) → 챔버 상부 분사] / [하부: h_0053 → t_001(T3) → Back필터/밸브 → "
-        "p_007(P5) → VesselDown 존 → 챔버 하부 분사] → 웨이퍼 세정 → h_006 → "
-        "p_003(P6)·t_003(T4) → PulseVent(T5)/SlowVent 배기. "
+        "p_002_PV(P1) → h_0052_PV 예열 → 충전 미터링(Slow/Quick) → h_0161_PV → "
+        "p_005_PV(P2) → 필터 → t_005_PV(T1) → h_005_PV 예열 → t_002_PV(T2) → "
+        "밸브 032 분기 → [상부: Front필터/밸브 → p_008_PV(P4) → 상부 존(Heater=존온도, "
+        "Cart=열원) → 챔버 상부 분사] / [하부: h_0053_PV → t_001_PV(T3) → Back필터/밸브 → "
+        "p_007_PV(P5) → 하부 존 → 챔버 하부 분사] → 웨이퍼 세정 → h_006_PV → "
+        "p_003_PV(P6)·t_003_PV(T4) → PulseVent(T5)/SlowVent 배기. "
         "핵심 인과 축: 유입 온도(T2·T3)가 챔버 존(Heater)과 함께 세정 온도를 만들고, "
         "그 결과가 배출 온도(T4·T5)에 나타난다.")
     return {"wafer_id": wid, "recipe": recipe, "steps": usteps,
@@ -321,7 +318,7 @@ _SYS = """당신은 반도체 초임계 CO2 세정설비를 오래 다룬 수석
 문체 규칙(엄수):
 · 자연스러운 한국어 서술문으로 쓴다. "**원인**" 같은 볼드 남발, 개조식 나열, 번역투를 피한다.
 · 용어: '유로'가 아니라 '배관'이라고 쓴다. 센서명은 데이터 컬럼명 그대로 쓰되
-  괄호로 위치를 풀어준다. 예: t_002(공급 배관, 예열 직후).
+  괄호로 위치를 풀어준다. 예: t_002_PV(공급 배관, 예열 직후).
 · 결론을 서두르지 말 것. 서로 다른 여러 센서와 설비 구간을 놓고 비교·저울질하는
   사고 과정을 보고서에 드러낸 뒤 결론에 도달하라. 한 센서에 매몰된 단정은 금지 —
   특히 배관 최상류 센서가 늘 원인처럼 보이는 착시를 경계하라(전파·지속 상태일 수 있다).
@@ -543,13 +540,13 @@ _PHYS_DEFAULT = {
     "w_bulge": {"sensor": "t_003_PV", "step": 4, "delta": 0.5,
                 "min_rise_ratio": 0.2, "peak_pct": 80.0},
     "t_balance": {"result": "t_003_PV",
-                  "causes": ["t_002_PV", "t_001"],
+                  "causes": ["t_002_PV", "t_001_PV"],
                   "k": 3.0, "min_run": 5},
     "p_balance": {"result": "p_008_PV",
                   "causes": ["p_005_PV", "p_007_PV"],
                   "k": 3.0, "min_run": 5}},
     "io_timing": {"tol_frac": 0.02},
-    "exclude_sensors_regex": "(?i)^h_",
+    "exclude_sensors_regex": "(?i)heat|vessel(up|down)?cart",
 }
 
 
@@ -712,11 +709,11 @@ _GCMP_SYS = """당신은 반도체 초임계 CO2 세정설비의 수석 공정 �
 
 def _flow_facts() -> str:
     return ("배관 순서: CO2공급원>Reservoir(Jacket/Inner/Cart/CartDown/Vent)>밸브031>"
-            "p_002(P1)>h_0052(H6)>충전미터링>h_0161>p_005(P2)>"
-            "필터>p_006(P3)>t_005(T1)>h_005(H12)>t_002(T2)>"
-            "분기>[상부:Front계열>p_008(P4)>h_022(존SV겸측정)/h_021(열원)]"
-            "[하부:h_0053(H16)>t_001(T3)>Back계열>p_007(P5)>VesselDown존]"
-            ">세정>Outlet>p_003(P6)>t_003(T4)>PulseVent(P7,T5)/SlowVent 배기.\n"
+            "p_002_PV(P1)>h_0052_PV(H6)>충전미터링>h_0161_PV>p_005_PV(P2)>"
+            "필터>p_006_PV(P3)>t_005_PV(T1)>h_005_PV(H12)>t_002_PV(T2)>"
+            "분기>[상부:Front계열>p_008_PV(P4)>상부 존 온도(존SV겸측정)/상부 열원(열원)]"
+            "[하부:h_0053_PV(H16)>t_001_PV(T3)>Back계열>p_007_PV(P5)>하부존]"
+            ">세정>Outlet>p_003_PV(P6)>t_003_PV(T4)>PulseVent(P7,T5)/SlowVent 배기.\n"
             "사실: 저장조·유지구간은 밀폐라 T상승=P상승. H라인 히터는 자체 고정설정(무피드백). "
             "Vessel/Reservoir 는 열원(Cart)이 측정점을 목표로 제어되는 구조.")
 
@@ -884,17 +881,17 @@ _STEPDIFF_SYS = """당신은 반도체 초임계 CO2 세정설비의 수석 공�
 자동으로 추린 목록(지속 이탈·급변)이다. 공정 엔지니어가 바로 조치할 수 있는 서사로 정리하라.
 
 가상센서(차분) 해석 규칙 — 소견이 있으면 반드시 최우선으로 서술:
-- dT_Front-Out = t_002 − t_003 (Front 유입−배출 온도차)
-- dT_Back-Out = t_001 − t_003 (Back 유입−배출 온도차)
-- dT_Front-Back = t_002 − t_001 (상부/하부 유입 온도 균형)
+- dT_Front-Out = t_002_PV − t_003_PV (Front 유입−배출 온도차)
+- dT_Back-Out = t_001_PV − t_003_PV (Back 유입−배출 온도차)
+- dT_Front-Back = t_002_PV − t_001_PV (상부/하부 유입 온도 균형)
 - dP_VslF-Out/dP_VslB-Out = Vessel 압력 − 배출부: ★골든이 답지 — 골든이 그 스텝에서
   확실히 양수인데 웨이퍼가 음수화하면 역류 신호(골든이 음수를 그리는 스텝은 정상 위상,
   면제). 압력은 스케일이 작아 수치가 작아도 유의함을 명시하라.
 - [물리 위반] 항목(아치 붕괴·밸브 무반응·IO 미개방·밸브 타이밍)은 설비 동작 방식상
   "나와서는 안 되는 패턴"이 나온 것 — 크기와 무관하게 최우선으로 서술한다.
   아치 붕괴 = dP_VslF-VslB 가 골든처럼 회복(아치)하지 않고 포화(saturation)된 것.
-- dP_VslB-Out = p_007 − p_003: 하락·음수화면 Back 쪽 역류 유추
-- dP_VslF-VslB = p_008 − p_007: 상부/하부 분사 압력 균형
+- dP_VslB-Out = p_007_PV − p_003_PV: 하락·음수화면 Back 쪽 역류 유추
+- dP_VslF-VslB = p_008_PV − p_007_PV: 상부/하부 분사 압력 균형
 
 입력은 세 요소로 구성된다 — 반드시 셋을 결합해 한 사건으로 서술하라:
 [요소① 음/양압 상태] outlet 기준 부호(음압=역류) → 방향 판정의 근거

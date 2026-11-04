@@ -42,7 +42,7 @@ def _load_manual_recipes(path: Path = MANUAL_RECIPES_PATH) -> dict:
 MANUAL_RECIPE_BY_FILENAME = _load_manual_recipes()
 
 
-h_SENSOR_PRESETS = {
+H_SENSOR_PRESETS = {
     "heater_block3": (
         "h_005_PV", "h_0052_PV", "h_0053_PV",
     ),
@@ -66,17 +66,17 @@ SENSOR_ROLE_PROFILES = (
     SENSOR_ROLE_PROFILE_H_SPLIT_V1,
 )
 
-h_SPLIT_HEATER_BLOCK_SENSORS = (
+H_SPLIT_HEATER_BLOCK_SENSORS = (
     "h_005_PV",
     "h_0052_PV",
     "h_0053_PV",
 )
-h_SPLIT_HEATER_BLOCK_COUNT = 3
-h_SPLIT_CART_COUNT = 10
-h_SPLIT_RESERVOIR_TARGET_SENSORS = (
+H_SPLIT_HEATER_BLOCK_COUNT = 3
+H_SPLIT_CART_COUNT = 10
+H_SPLIT_RESERVOIR_TARGET_SENSORS = (
     "h_010_PV",
 )
-h_SPLIT_VESSEL_HEATER_COUNT = 8
+H_SPLIT_VESSEL_HEATER_COUNT = 8
 
 
 def normalize_sensor_role_profile(value) -> str:
@@ -92,7 +92,7 @@ def normalize_h_sensor_preset(value) -> str:
     text = str(value or "").strip().lower().replace("-", "_")
     if text in {"", "all", "none"}:
         return ""
-    if text in {"heater_block_3", "heater_blocks", "h_0053"}:
+    if text in {"heater_block_3", "heater_blocks", "heaterblock3"}:
         return "heater_block3"
     if text in {"heater12", "heater_12pv"}:
         return "heater_12"
@@ -104,7 +104,7 @@ def h_sensor_keep_for_config(cfg) -> tuple:
         return tuple()
     preset = normalize_h_sensor_preset(getattr(cfg, "h_sensor_preset", ""))
     if preset:
-        return tuple(h_SENSOR_PRESETS.get(preset, ()))
+        return tuple(H_SENSOR_PRESETS.get(preset, ()))
     return tuple(str(x).strip() for x in getattr(cfg, "h_sensor_keep", ()) or ()
                  if str(x).strip())
 
@@ -137,14 +137,14 @@ class IOConfig:
     # Continuous sensor schema.
     sensor_keep: tuple = ()
     sensor_keep_prefixes: tuple = (
-        "p_", "t_", "h_005", "h_022", "h_019",
+        "p_", "t_", "h_005", "h_022", "h_019", "P_", "T_",
     )
-    target_sensor_prefixes: tuple = ("p_", "t_")
+    target_sensor_prefixes: tuple = ("p_", "t_", "P_", "T_")
     active_control_sensor_prefixes: tuple = (
-        "h_", "h_022", "h_019",
+        "h_", "H_",
     )
     active_control_sensor_keywords: tuple = ()
-    active_control_sensor_regex: str = r"^h_[0-9]+(?:_PV)?$"
+    active_control_sensor_regex: str = r"(^H[_A-Za-z0-9]*|.*(Heat|Heater).*)"
     active_control_sensor_names: tuple = (
         "v_008", "v_010",
         "h_0111_PV", "h_010_PV", "h_008_PV",

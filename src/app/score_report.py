@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from src.wafer_score_override import apply_selected_override
 import numpy as np
+from src import sensor_names as SN
 from src.app.app_sensor_scores import load_reference, score_matrix, sensor_scores
 
 
@@ -72,6 +73,7 @@ def build_score_report(wid, archive, model_dir, history, original_context, selec
 
 
 def write_score_report(folder, report):
+    report = SN.normalize(report)
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     (folder/'score_calculation.json').write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False), encoding='utf-8')

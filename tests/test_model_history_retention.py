@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import numpy as np
 from src.wafer_score_override import AUDIT_FIELDS, normalize_override, override_identity
 from src.auxiliary_sensors import auxiliary_sensor_columns
+from src.app import integrated_scores as ISCORE
 
 
 class ModelHistoryRetentionTests(unittest.TestCase):
@@ -24,9 +25,9 @@ class ModelHistoryRetentionTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.base=Path(self.temp.name);self.mid='m@A';self.q=queue.Queue()
         root=SimpleNamespace(art=self.base/'A');root.art.mkdir()
-        self.engine=SimpleNamespace(root=root,model=SimpleNamespace(sensor_cols=['p_test']),_switch_lock=threading.RLock())
+        self.engine=SimpleNamespace(root=root,model=SimpleNamespace(sensor_cols=['P_900']),_switch_lock=threading.RLock())
         self.state=dict(results=[],recs={},progress={},progress_bg={})
-        self.ns=dict(AUDIT_FIELDS=AUDIT_FIELDS,Dict=dict,List=list,Path=Path,np=np,json=json,os=os,hashlib=hashlib,time=time,dt=dt,shutil=shutil,
+        self.ns=dict(ISCORE=ISCORE, _SCATTER_CACHE={}, AUDIT_FIELDS=AUDIT_FIELDS,Dict=dict,List=list,Path=Path,np=np,json=json,os=os,hashlib=hashlib,time=time,dt=dt,shutil=shutil,
             ENGINE=self.engine,STATE=self.state,STATE_LOCK=threading.Lock(),_HIST_LOCK=threading.Lock(),
             ARCHIVE_DIR=self.base/'archive',_model_id=lambda:self.mid,_legacy_model_id=lambda:'m@legacy',
             _safe=lambda w:w,_lot_of=lambda w:'lot',_model_archive_path=None,

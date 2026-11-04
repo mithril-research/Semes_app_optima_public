@@ -9,6 +9,9 @@
 
 ## 실행
 
+Ubuntu 서버 설치·원격 접속·자동 실행은 [Ubuntu 배포 안내](../../deploy/UBUNTU.md)를 참고하세요.
+빠른 시작: `bash src/app/run_ubuntu.sh setup` 후 `bash src/app/run_ubuntu.sh` (저장소 최상위에서 실행).
+
 ### A. 웹 서버(개발/서버 배포)
 ```bash
 cd /home/node/io_dev

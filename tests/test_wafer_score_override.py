@@ -152,10 +152,11 @@ class OverrideTests(unittest.TestCase):
         self.assertEqual([r['pattern'] for r in normalize_override(dict(RULE, patterns=' BAD, OK, BAD '))['rules']], ['BAD', 'OK'])
 
     def server(self):
+        from src.app import integrated_scores as ISCORE
         engine = SimpleNamespace(wafer_score_override=RULE, ready=True, threshold=4.264,
                                  thresholds={}, using=lambda e: nullcontext())
         bands = dict(warn=1.2, crit=1.5)
-        ns = dict(Dict=Dict, List=List, np=np, math=math, ENGINE=engine, STATE={},
+        ns = dict(Dict=Dict, List=List, np=np, math=math, ENGINE=engine, STATE={}, ISCORE=ISCORE,
                   AUDIT_FIELDS=AUDIT_FIELDS, effective_wafer_score=effective_wafer_score,
                   _recipe_threshold=lambda wid: ('29a', 4.264),
                   _recipe_base_decision=lambda wid: ('29a', 2.132, 4.264),

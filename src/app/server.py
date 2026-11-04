@@ -61,6 +61,7 @@ from src.app.chamber_models import (EngineRouter, discover_chamber_models,
 _CPU_BUDGET = CPU.apply_early()
 
 import numpy as np
+from src import sensor_names as SN
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -68,6 +69,7 @@ from pydantic import BaseModel
 
 from src.auxiliary_sensors import auxiliary_sensor_columns, restore_context_modes, validate_auxiliary_record
 from src.config import IOConfig
+from src.app import integrated_scores as ISCORE
 from src.wafer_score_override import AUDIT_FIELDS, normalize_override, effective_wafer_score, artifact_override, apply_selected_override, override_identity
 from src.data import load_dataset, _data_files, _resolve_existing_dir_ci
 # TCNForecastModel(=torch) 은 지연 import — onnx 백엔드만 쓰면 torch 불필요(배포 경량).
@@ -84,6 +86,9 @@ if FROZEN:
 else:
     PKG = Path(__file__).resolve().parents[1]       # src/
     _WRITABLE = PKG
+if os.environ.get("IO_STATE_DIR"):
+    _WRITABLE = Path(os.environ["IO_STATE_DIR"]).expanduser().resolve()
+    _WRITABLE.mkdir(parents=True, exist_ok=True)
 STATIC = PKG / "app" / "static"
 
 # ── 저장소 경로 — 배포판: 앱 옆 고정(항상성). 특수 상황은 환경변수로만 ──
@@ -405,7 +410,11 @@ LOG_DIR = _storage_dir("log", _WRITABLE / "로그", "IO_LOG_DIR")        # 앱 �
 ARCHIVE_RETENTION_DAYS = int(os.environ.get("IO_ARCHIVE_DAYS", "0"))    # 기본=0=무제한(영구 보관). 양수면 그 일수
 RETENTION_DAYS = int(os.environ.get("IO_RETENTION_DAYS", "60"))   # 백업·로그 보관 일수(기본 60일)
 # 챔버별 데이터 경로 기본값 — 설비 원본 .log 가 챔버 폴더로 나뉘어 쌓인다.
-CHAMBER_PATH_DEFAULTS = {f"dsv{i}": rf"D:\smarteq_logs\DSV{i}" for i in range(1, 7)}
+CHAMBER_PATH_DEFAULTS = {
+    f"dsv{i}": (rf"D:\smarteq_logs\DSV{i}" if os.name == "nt"
+                 else str(INBOX / f"DSV{i}"))
+    for i in range(1, 7)
+}
 WATCH_INTERVAL = float(os.environ.get("IO_WATCH_INTERVAL", "5"))  # inbox 폴링 주기(초)
 STABLE_SECS = float(os.environ.get("IO_STABLE_SECS", "3"))        # 파일이 '완성'됐다고 볼 정지시간(초)
 AUTO_START = os.environ.get("IO_AUTOWATCH", "1") != "0"           # 자동감시 기본 ON
@@ -463,9 +472,10 @@ def _path_load(pstr):
 
 
 def _load_app_config() -> dict:
+    from src import sensor_names as SN
     try:
         import json as _j
-        return _j.loads(APP_CONFIG_FILE.read_text(encoding="utf-8"))
+        return SN.normalize(_j.loads(APP_CONFIG_FILE.read_text(encoding="utf-8")))
     except Exception:                                    # noqa: BLE001
         return {}
 
@@ -1486,6 +1496,7 @@ class Engine:
         앞 스텝(ProcessStep==0) 제외는 모델이 내부적으로 처리(score_exclude_boundary_step0)
         하므로 여기서 score_skip_steps 를 주입하지 않는다.
         """
+        from src import sensor_names as SN
         self.wafer_score_override = None
         self._override_in_json = False
         cfg = replace(IOConfig(), io_keep=())
@@ -1494,7 +1505,7 @@ class Engine:
             sb = self.art / "best_search.json"
         self._override_in_json, self.wafer_score_override = artifact_override(sb.parent, sb, include_standalone=False)
         if sb.exists():
-            root = json.loads(sb.read_text(encoding="utf-8"))
+            root = SN.normalize(json.loads(sb.read_text(encoding="utf-8")))
             best = root.get("best", {}) if isinstance(root, dict) else {}
             self.params = best.get("params") or {}
             val = best.get("val") or {}
@@ -2524,13 +2535,13 @@ def _norm_cdf(z: float) -> float:
 
 
 @_wafer_model
-def _result_for(rec) -> Dict:
+def _result_for(rec, auxiliary=True) -> Dict:
     """한 wafer record → 결과 dict(점수·판정). RCA(주요원인)는 제외."""
     wid = rec["wafer_id"]
     s = _assess(rec)
     sv = _score_view(wid, float(s["score"]), rec)         # 임계=1 정규화(29a→1.1)
     sw = _weighted_score_for_rec(rec)                # 배점 점수(S_w) — 판정은 배점모드에서 사용
-    return {
+    result = {
         "wafer_id": wid,
         "score": sv["score"],
         "threshold": sv["threshold"],
@@ -2549,6 +2560,43 @@ def _result_for(rec) -> Dict:
         "end_ts": _end_ts_and_date(wid)[0],          # 파일명 끝시각(상세 조회 날짜용)
         "n_tp": _ntp_from_rec(rec),                  # 점수 구간 길이(타임포인트 정규화 모드용)
     }
+
+    _decision = _recipe_threshold(wid)[1]
+    _component_input = dict(result, score_raw=sv["effective_score_raw"], threshold_raw=_decision,
+                            ratio_thr=sv["effective_score_raw"] / _decision if _decision > 0 else None)
+    if auxiliary:
+        result["score_components"] = ISCORE.inspect(rec.get("source_path"), _component_input, _WRITABLE, _load_app_config())
+    else:
+        result["_aux_input"] = _component_input
+    return result
+
+
+def _results_with_aux(recs, chamber=None):
+    """Bounded PV microbatches; store full explanations before history/archive writes."""
+    for start in range(0, len(recs), 32):
+        _pause_gate()
+        batch = []
+        for rec in recs[start:start + 32]:
+            _pause_gate()
+            try:
+                result = _result_for(rec, auxiliary=False)
+                if chamber and not result.get("chamber"):
+                    result["chamber"] = chamber
+                result["_aux_input"]["chamber"] = result.get("chamber")
+                batch.append((rec, result, None))
+            except Exception as exc:
+                batch.append((rec, None, exc))
+        valid = [(rec, result) for rec, result, error in batch if error is None]
+        if valid:
+            components = ISCORE.inspect_many(
+                [rec.get("source_path") for rec, result in valid],
+                [result.pop("_aux_input") for rec, result in valid],
+                _WRITABLE, _load_app_config(), checkpoint=_pause_gate)
+            for (rec, result), component in zip(valid, components):
+                result["score_components"] = component
+        for row in batch:
+            _pause_gate()
+            yield row
 
 
 def _merge_results(new_results: List[Dict], rec_map: Dict, folder: Path):
@@ -2597,7 +2645,7 @@ def _convert_log_to_csv(src: Path, dst: Path) -> None:
             tmp.unlink()
         except OSError:
             pass
-    df.to_csv(tmp, sep=",", index=False)
+    SN.frame(df).to_csv(tmp, sep=",", index=False)
     tmp.replace(dst)                                      # 원자적 교체(부분 파일 방지)
 
 
@@ -3001,6 +3049,8 @@ def _model_sig(art=None) -> str:
                 st = p.stat()
                 parts.append(f"{p.name}:{st.st_size}:{st.st_mtime_ns}")
         parts.append(json.dumps(_load_app_config().get("sensor_aliases") or {}, sort_keys=True))
+        parts.append(json.dumps({ch: {k: v for k, v in ver.items() if k != "locations"}
+                                for ch, ver in ISCORE.versions(_WRITABLE, _load_app_config()).items()}, sort_keys=True))
         return hashlib.md5("|".join(parts).encode("utf-8", "ignore")).hexdigest()[:16]
     except Exception:                                     # noqa: BLE001
         return ""
@@ -3022,6 +3072,7 @@ def _score_cache_path(sig: str) -> Path:
 
 def _score_cache_load(sig: str) -> Dict:
     """모델 서명별 점수 캐시(JSONL, 뒤 라인이 이김) → {stem: entry}. 메모리 1회 로드."""
+    from src import sensor_names as SN
     with _SCORE_CACHE_LOCK:
         if _SCORE_CACHE_MEM.get("sig") == sig:
             return dict(_SCORE_CACHE_MEM["rows"])
@@ -3032,7 +3083,7 @@ def _score_cache_load(sig: str) -> Dict:
             with open(p, encoding="utf-8") as fh:
                 for ln in fh:
                     try:
-                        e = json.loads(ln)
+                        e = SN.normalize(json.loads(ln))
                         if e.get("w"):
                             rows[str(e["w"])] = e
                     except Exception:                     # noqa: BLE001
@@ -3285,6 +3336,9 @@ def run_inspection(folder: Path, replace_results: bool = True, chamber=None,
                      "chamber": _chamber(s) or chamber,
                      "ratio": sv["score"],
                      "end_ts": _end_ts_and_date(s)[0]}
+                _saved = _load_archive(str(e["d"]), s)
+                if _saved:
+                    r["score_components"] = ISCORE.archived(_saved["meta"])
                 results.append(r)
                 _append_history([r])                      # 이력은 (date,wafer) 최신 1건으로 dedup 됨
             except Exception as e2:                       # noqa: BLE001
@@ -3305,10 +3359,11 @@ def run_inspection(folder: Path, replace_results: bool = True, chamber=None,
                 io_cols, sensor_cols, cov = io_c, sen_c, cov_c
             _prefill_batch(recs, pause_check=_pause_gate)  # ★ 청크 배치 순전파(배치마다 일시중단 확인→GPU 유휴화)
             chunk_rec_map = {}
-            for rec in recs:
+            for rec, r, error in _results_with_aux(recs, chamber):
                 _pause_gate()
                 try:                                      # 한 장이 실패해도 배치 전체가 멈추지 않게(자동검사와 동일)
-                    r = _result_for(rec)
+                    if error is not None:
+                        raise error
                     _check_inspect_cancelled()
                     if chamber and not r.get("chamber"):  # .log C2 챔버 우선, 폴더 귀속은 폴백
                         r["chamber"] = chamber
@@ -3488,6 +3543,7 @@ def _hist_entry(r: Dict, mid: str) -> Dict:
         "n_tp": (int(r["n_tp"]) if _isnum(r.get("n_tp")) and int(r.get("n_tp") or 0) > 0
                  else None),
         "model": mid,
+        "score_components": ISCORE.summary(ISCORE.archived(r)),
     }
 
 
@@ -3509,6 +3565,7 @@ def _append_history(results: List[Dict]):
             _HIST_IDX["rows"][(e["date"], str(e["wafer_id"]), str(e.get("model") or ""))] = e
             _HIST_IDX["by_stem"].setdefault(str(e["wafer_id"]), set()).add(mid)
         _HIST_IDX["sorted"] = None                        # 다음 조회 때 재정렬
+        _SCATTER_CACHE.update(sig=None, map={})  # Same-count reinspection must refresh components.
     _load_ntp()                                          # 사이드맵에도 반영(과거 이력 조회 시 재사용)
     _new = {str(r["wafer_id"]): int(r["n_tp"]) for r in results
             if _isnum(r.get("n_tp")) and int(r.get("n_tp") or 0) > 0}
@@ -3527,6 +3584,7 @@ def _hist_index_ensure():
     각 npz 에서 meta_json 배열만 읽는다(압축 멤버 1개 — 파일당 수 ms).
     무제한 보관 설정에서는 보관된 전체 이력을 스캔한다. 실패한 파일은 건너뛴다.
     """
+    from src import sensor_names as SN
     if _HIST_IDX["built"]:
         return
     with _HIST_LOCK:
@@ -3545,7 +3603,7 @@ def _hist_index_ensure():
             for f in sorted(d.rglob("*.npz"), key=lambda p: (len(p.parts), str(p))):
                 try:
                     with np.load(f, allow_pickle=False) as z:
-                        meta = json.loads(bytes(z["meta_json"]).decode("utf-8"))
+                        meta = SN.normalize(json.loads(bytes(z["meta_json"]).decode("utf-8")))
                     e = {
                         "ts": meta.get("ts"), "date": meta.get("date") or d.name,
                         "wafer_id": meta.get("wafer_id") or f.stem,
@@ -3560,6 +3618,7 @@ def _hist_index_ensure():
                         "n_bad_lines": int(meta.get("n_bad_lines") or 0),
                         "n_tp": meta.get("n_tp"),
                         "model": meta.get("model"),
+                        "score_components": ISCORE.summary(ISCORE.archived(meta)),
                     }
                     rows[(e["date"], str(e["wafer_id"]), str(e.get("model") or ""))] = e
                     by_stem.setdefault(str(e["wafer_id"]), set()).add(str(meta.get("model") or ""))
@@ -4158,6 +4217,7 @@ def _archive_write_path(date: str, wid: str) -> Path:
 
 def _archive_path(date: str, wid: str) -> Path:
     """Read current model's archive; old flat files remain untouched."""
+    from src import sensor_names as SN
     path = _model_archive_path(date, wid)
     if path.is_file():
         return path
@@ -4165,7 +4225,7 @@ def _archive_path(date: str, wid: str) -> Path:
     if legacy.is_file():
         try:
             with np.load(legacy, allow_pickle=False) as data:
-                meta = json.loads(bytes(data["meta_json"]).decode("utf-8"))
+                meta = SN.normalize(json.loads(bytes(data["meta_json"]).decode("utf-8")))
             if _archive_model_matches(meta.get("model"), _model_id()):
                 return legacy
             # Untagged pre-model archives are readable only in wholly untagged history.
@@ -4240,7 +4300,7 @@ def _archive_wafer(rec, result: Dict):
         meta = {k: result.get(k) for k in
                 ("wafer_id", "recipe", "chamber", "score", "threshold",
                  "score_raw", "threshold_raw", "verdict", "n_flag_sensor",
-                 "n_bad_lines", "score_w_raw", "n_tp", "model_chamber") + AUDIT_FIELDS}
+                 "n_bad_lines", "score_w_raw", "n_tp", "model_chamber", "score_components") + AUDIT_FIELDS}
         # ★ 단일 소스 설계: 이력 인덱스가 아카이브에서 재구축되므로, 이력 행에
         #   필요한 필드(LOT 포함)를 여기 meta 에 전부 싣는다.
         meta["lot"] = result.get("lot") or _lot_of(result.get("wafer_id"))
@@ -4302,6 +4362,7 @@ def _archive_wafer(rec, result: Dict):
 
 
 def _load_archive(date: str, wid: str):
+    from src import sensor_names as SN
     p = _archive_path(date, wid)
     if not p.exists():
         # ★ 비동기 아카이브 도입 대응: 방금 검사된 웨이퍼는 npz 가 아직 쓰기 큐에 있을 수 있다.
@@ -4313,7 +4374,7 @@ def _load_archive(date: str, wid: str):
         if not p.exists():
             return None
     d = np.load(p, allow_pickle=False)
-    meta = json.loads(bytes(d["meta_json"].tobytes()).decode("utf-8"))
+    meta = SN.normalize(json.loads(bytes(d["meta_json"].tobytes()).decode("utf-8")))
     try:
         vopen = d["valve_open"].astype(np.uint8)           # 구 아카이브엔 없음 → None
     except (KeyError, Exception):                          # noqa: BLE001
@@ -4657,7 +4718,7 @@ def _model_slug() -> str:
 
 def _report_root() -> Path:
     """현재 모델의 리포트 루트: reports/<model_slug>/  (모델별 분리)."""
-    d = REPORT_DIR / _model_slug()
+    d = REPORT_DIR / "anonymous-v1" / _model_slug()
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -5164,10 +5225,11 @@ class AutoPilot:
               f"(감시 토글={'ON' if self.enabled else 'OFF'})", flush=True)
         _tt = (prog_total if prog_total else total)       # 주기 전체 총계(한 바로 이어짐)
         _set_progress(True, prog_off, _tt, f"자동검사 {chamber or folder.name}", str(folder), bg=True)
-        for i, rec in enumerate(todo, 1):
+        for i, (rec, r, error) in enumerate(_results_with_aux(todo, chamber), 1):
             _wait_if_paused(i - 1, total, str(folder), bg=True)   # 일시중단 시 대기(자동검사)
             try:
-                r = _result_for(rec)
+                if error is not None:
+                    raise error
                 _check_inspect_cancelled()
                 if chamber and not r.get("chamber"):   # .log C2 챔버 우선, 폴더 귀속은 폴백
                     r["chamber"] = chamber
@@ -6141,7 +6203,7 @@ def api_sensors():
             return list(dict.fromkeys(str(c) for model in models for c in getattr(model, attr)))
         except Exception:                                 # noqa: BLE001
             return []
-    aliases = _load_app_config().get("sensor_aliases") or {}
+    aliases = {SN.name(k): SN.name(v) for k, v in (_load_app_config().get("sensor_aliases") or {}).items()}
     return {
         "input_sensors": _cols("input_sensor_cols"),      # 모델 입력(과거) 센서
         "recon_sensors": _cols("sensor_cols"),            # 복원(예측) 센서
@@ -6162,7 +6224,7 @@ def api_sensor_aliases(req: AliasReq):
     for k, v in (req.aliases or {}).items():
         k = str(k).strip(); v = str(v).strip()
         if k and v and k != v:
-            clean[k] = v
+            clean[SN.name(k)] = SN.name(v)
     cfg = _load_app_config()
     cfg["sensor_aliases"] = clean
     _save_app_config(cfg)
@@ -6202,6 +6264,7 @@ def api_set_model_threshold(req: ThresholdReq):
 
     모델 폴더에 search_best.json 이 없으면 점수가 원본(정규화 안 됨)으로 나온다.
     학습 때의 판정 임계값(원점수)을 여기서 넣으면 점수 = 원점수/임계(=1 기준)로 정규화된다."""
+    from src import sensor_names as SN
     if ENGINE.root.chamber_engines:
         raise HTTPException(400, "챔버별 모델은 각 챔버 폴더의 모델·임계를 수정한 뒤 새로고침하세요.")
     art = Path(ENGINE.art)
@@ -6215,7 +6278,7 @@ def api_set_model_threshold(req: ThresholdReq):
         raise HTTPException(400, "임계는 0보다 큰 숫자여야 합니다.")
     sb = art / "search_best.json"
     try:
-        root = json.loads(sb.read_text(encoding="utf-8")) if sb.exists() else {}
+        root = SN.normalize(json.loads(sb.read_text(encoding="utf-8"))) if sb.exists() else {}
     except Exception:                                    # noqa: BLE001
         root = {}
     if not isinstance(root, dict):
@@ -8311,7 +8374,9 @@ def api_scatter(limit: int = 300, hours: float = 0, chamber: str = "all",
     rows = _history_for_current_model()
     # ★ 응답 캐시: 상한 제거 후 N점 전체를 매 폴링마다 재직렬화하면 대량(2만+)에서 무겁다.
     #   이력(모델·길이·배율·모드)이 그대로고 같은 파라미터면 직전 응답 재사용.
-    _sig = (_model_id(), len(rows), _recipe_mult_sig(), _score_mode())
+    _aux_versions = ISCORE.status_versions(_WRITABLE, _load_app_config())
+    _aux_version = json.dumps(_aux_versions, sort_keys=True)
+    _sig = (_model_id(), len(rows), _recipe_mult_sig(), _score_mode(), _aux_version)
     _key = (limit, hours, chamber, start, end, recipe, chambers, recipes)
     _c = _SCATTER_CACHE
     if _c.get("sig") == _sig and _key in _c["map"]:
@@ -8377,6 +8442,7 @@ def api_scatter(limit: int = 300, hours: float = 0, chamber: str = "all",
                     "chamber": _chamber_key(r) or None,
                     "recipe": _recipe_display(r.get("recipe")),
                     "mean_recipe": str(r.get("recipe") or ""),
+                    "score_components": ISCORE.summary(ISCORE.current_components(r, _aux_versions.get(_chamber_key(r).upper(), {}))),
                     "ratio": _floor2(_disp_ratio),              # 점수 표시=버림(한 번만)
                     # 계산용 정밀값 — 산포 추세가 쓰는 값(ratio_thr)을 그대로 전달.
                     # ※ 위 score 는 이미 2자리 버림이라 여기서 다시 나누면 정밀도가 사라진다.
@@ -8420,7 +8486,7 @@ def api_scatter(limit: int = 300, hours: float = 0, chamber: str = "all",
             ("down" if slope < -0.02 * rng / max(1, n) else "flat")
         trend = {"slope": round(slope, 6), "dir": d,
                  "y0": round(inter, 4), "y1": round(inter + slope * (n - 1), 4)}
-    _resp = {"model_id": _model_id(), "points": pts, "trend": trend, "n": n, "n_na": n_na, "n_est": n_est,
+    _resp = {"model_id": _model_id(), "auxiliary_version": _aux_version, "points": pts, "trend": trend, "n": n, "n_na": n_na, "n_est": n_est,
              "na_reason": na_reason,
              "rule": {**_rule_now, "model_score_norm": str(getattr(ENGINE, "score_norm", "none"))}}
     if _c.get("sig") != _sig:
@@ -8531,6 +8597,7 @@ _TREND_SUMMARY_CACHE = TrendSummaryCache()
 
 
 def _trend_summary(date, wid, pairs=None):
+    from src import sensor_names as SN
     from src.app.sensor_differences import difference_series
     path = _archive_path(date, wid)
 
@@ -8540,7 +8607,7 @@ def _trend_summary(date, wid, pairs=None):
         if not path.exists():
             return None
         with np.load(path, allow_pickle=False) as data:
-            meta = json.loads(bytes(data["meta_json"].tobytes()).decode("utf-8"))
+            meta = SN.normalize(json.loads(bytes(data["meta_json"].tobytes()).decode("utf-8")))
             # NpzFile is lazy: do not decompress unused model input arrays.
             keys = set(data.files)
             arch = {"meta": meta, "step": data["step"],
@@ -8568,7 +8635,7 @@ def _trend_summary(date, wid, pairs=None):
         if measurements is None:
             return result
         with np.load(path, allow_pickle=False) as data:
-            meta = json.loads(bytes(data['meta_json'].tobytes()).decode('utf-8'))
+            meta = SN.normalize(json.loads(bytes(data['meta_json'].tobytes()).decode('utf-8')))
             arch = dict(meta=meta, step=data['step'], rca_io=data['rca_io'] if 'rca_io' in data else None)
             summary = difference_series(attach_trend_measurements(arch, measurements), pairs=pairs)
         from src.data import step_timing
@@ -9256,7 +9323,7 @@ def api_export_html(detail_limit: int = 50, sensor_top: int = 12,
 
 
 #  ── RCA(근본원인분석): 불량 웨이퍼의 .log 를 ONNX 로 재분석 → slope-밸브 리포트+이미지 ──
-RCA_DIR = _storage_dir("rca", _WRITABLE / "rca")        # 생성 리포트/이미지 보관
+RCA_DIR = _storage_dir("rca", _WRITABLE / "rca") / "anonymous-v1"        # 생성 리포트/이미지 보관
 
 
 def _safe_name(s: str) -> str:
@@ -9494,8 +9561,8 @@ def api_rca_generate(date: str, wid: str, force: bool = False):
     # ── 공정 엔지니어용 3항목 요약: 원인 · 불량 유형 · 반사실적 설명 ──
     kv = slope.get("summary_kv") or {}
     first = (kv.get("주요 센서", "").split(",")[0] or "").strip()
-    fam = ("온도" if first.upper().startswith("T") else "압력" if first.upper().startswith("P")
-           else "히터/H" if (first.upper().startswith("H") or "Heater" in first) else "센서")
+    fam = ("온도" if first.startswith("T") else "압력" if first.startswith("P")
+           else "히터/H" if (first.startswith("H") or "Heater" in first) else "센서")
     dirn = kv.get("방향", "")
     dtxt = "초과(실제>기대)" if ">" in dirn else "미달(실제<기대)" if "<" in dirn else "-"
     cause = " · ".join([x for x in [
@@ -9510,7 +9577,7 @@ def api_rca_generate(date: str, wid: str, force: bool = False):
         cf_text = (f"step {best['step']} 에서 {best['control']} 를 {best['delta']} 조정 시 "
                    f"P/T 복원오차 약 {best['pct']:.1f}% 개선 (조정 후 값 {best['value']})")
     else:
-        cf_text = "H 제어변수(h_005) 조정만으로는 유의미한 개선 없음 → 밸브/유로 경로 점검 권장"
+        cf_text = "H 제어변수(h_005_PV) 조정만으로는 유의미한 개선 없음 → 밸브/유로 경로 점검 권장"
     summary = {"cause": cause, "defect_type": defect_type, "counterfactual": cf_text,
                "focus_step": slope.get("focus_step"),
                "top_sensors": (kv.get("주요 센서", "").split(",") if kv.get("주요 센서") else [])}
@@ -10518,13 +10585,14 @@ def api_train_preview(req: TrainPreviewReq):
 def api_train_best_params(req: TrainFolderReq):
     """기존 search_best.json 에서 best.params 로드 — '고정 학습' 입력칸 채우기용.
     folder 에 파일 경로 또는 폴더(안의 search_best.json) 를 받는다."""
+    from src import sensor_names as SN
     p = Path(req.folder or "").expanduser()
     if p.is_dir():
         p = p / "search_best.json"
     if not p.exists():
         raise HTTPException(404, f"search_best.json 없음: {p}")
     try:
-        d = json.loads(p.read_text(encoding="utf-8"))
+        d = SN.normalize(json.loads(p.read_text(encoding="utf-8")))
         best = d.get("best") or {}
         params = best.get("params") or {}
         if not params:
@@ -10576,6 +10644,18 @@ def api_train_log(jid: str, tail: int = 120):
         return {"lines": lines[-max(1, min(int(tail), 2000)):]}
     except Exception as e:                                # noqa: BLE001
         raise HTTPException(500, str(e))
+
+
+@app.get("/api/archive/{date}/{wid}/score-components")
+@_wafer_model
+def api_archive_score_components(date: str, wid: str):
+    arch = _load_archive(date, wid)
+    if arch is None:
+        raise HTTPException(404, "웨이퍼 아카이브 없음")
+    current = ISCORE.status_versions(_WRITABLE, _load_app_config())
+    chamber = str(arch["meta"].get("chamber") or "").upper()
+    return ISCORE.current_components(arch["meta"], current.get(chamber, {}))
+
 
 
 if __name__ == "__main__":

@@ -175,7 +175,7 @@ def verify():
 
 SAN = [  # 발송판 치환(기밀명 → 역할명) — 순서 중요(긴 것 먼저)
  ("t_003_PV","출구 온도"),("t_002_PV","내부 블록 온도"),
- ("t_001","BackFill 온도"),("dP_VslF-VslB","전후단 압력차"),
+ ("t_001_PV","BackFill 온도"),("dP_VslF-VslB","전후단 압력차"),
  ("p_007_PV","후단 용기 압력"),("p_008_PV","전단 용기 압력"),
  ("p_005_PV","공급 압력"),("dP_VslF-Out","전단-출구 압력차"),
  ("WUK370A","설비A"),("WUK370B","설비B"),("WUKA","설비A"),("WUKB","설비B"),
@@ -320,7 +320,7 @@ def build_html(fp, times, san=False):
 if __name__ == "__main__":
     t = verify()
     os.makedirs(OUT, exist_ok=True)
-    build_xlsx(os.path.join(OUT, "요구사항_TC_추적표.xlsx.txt"), t, san=False)
+    build_xlsx(os.path.join(OUT, "요구사항_TC_추적표.xlsx"), t, san=False)
     build_html(os.path.join(OUT, "요구사항_TC_추적표.html"), t, san=False)
     build_xlsx(os.path.join(OUT, "요구사항_TC_추적표_발송판.xlsx"), t, san=True)
     build_html(os.path.join(OUT, "요구사항_TC_추적표_발송판.html"), t, san=True)

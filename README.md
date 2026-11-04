@@ -1,21 +1,40 @@
-> 이 저장소는 센서명이 익명화된 배포본입니다. 온도·압력·히터·보조 센서는 `t_`, `p_`, `h_`, `d_`, `s_` 식별자를 사용합니다. 디지털 IO는 별도의 익명 숫자 ID를 사용합니다. 실제 센서명과의 대응표는 포함하지 않습니다.
->
-> 입력 데이터의 컬럼과 모델 메타데이터도 동일한 익명 스키마여야 합니다. 기존 원본 데이터·모델을 그대로 사용하지 말고, 별도로 보관한 대응 관계를 적용하거나 익명 데이터로 다시 학습하세요. `_PV`와 `_SV`는 측정값/설정값 구분을 위해 유지합니다.
->
-> 화면 캡처와 PDF·Word·Excel 원본은 제외했습니다. 추출 가능한 문서 본문은 익명화한 `.txt` 파일로 제공합니다. 서식과 이미지 내용은 보존하지 않습니다.
+> 공개 익명화 배포본입니다. 기존 센서 식별자(`p_`, `t_`, `h_`, `d_`, `s_`, `_PV`/`_SV`)와 디지털 IO의 익명 숫자 ID를 유지합니다. 실제명 대응표와 비공개 저장소 이력은 포함하지 않습니다.
 
 # 챔버 이상 검사 시스템 (ChamberInspect)
 
 웨이퍼 센서 로그를 읽어 복원오차 기반으로 이상 웨이퍼를 판정하는 제어기용 데스크톱 앱입니다.
 FastAPI + onnxruntime + WebView2 로 동작하며, PyInstaller 로 단일 폴더 exe 를 만듭니다.
 
+OPTIMA는 자체 테마·화면과 Ubuntu 서버 배포 기능을 유지하면서 Semes_app의
+`87347bc`까지의 기능을 반영합니다. 추이 분석에서 센서 이름 검색, 옵션 그룹과 공통
+Y축 설정을 사용할 수 있습니다. 보조모델이 교체되거나 없어져도 과거 검사 점수와
+상세 자료는 검사 당시 결과로 유지하고, 현재 모델 상태는 별도로 표시합니다.
+Windows와 Ubuntu 사이에서 보조모델을 옮겨도 상대경로와 모델 식별값을 일관되게
+처리합니다. 실린더 임계값이 0인 상태에서 양수 점수가 나오면 초과 상태로 표시합니다.
+보조모델 배치·실린더 임계값 진단은 `src/app/auxiliary/README.txt`, Ubuntu 설치와
+오프라인 배포는 [Ubuntu 배포 안내](deploy/UBUNTU.md)를 참고하세요.
+
+## 센서명 익명화
+
+OPTIMA의 소스·화면·리포트·문서는 `p_002_PV`, `t_005_PV`, `h_0111_PV`, `d_002_PV` 같은
+익명 센서 ID를 사용합니다. 원본명이 표시된 이전 참고 이미지는 공유 대상에서 제외했습니다.
+
+기존 원본 로그·모델을 사용하는 현장에서는 원본명→익명 ID 매핑을 별도로 보관하고
+`IO_SENSOR_NAME_MAP`으로 지정하세요. 또는 쓰기 루트(`IO_STATE_DIR`, Windows exe 옆,
+소스 실행 시 `src/`)에 `sensor_name_map.private.json`으로 둘 수 있습니다.
+파일 형식은 `{"names": {"legacy_channel_01": "p_002_PV"}}`입니다.
+이 파일은 Git과 공유 압축본에 포함하지 마세요. 원본명 없이 들어온 새 센서는 일관된 해시 ID로 표시되며,
+스텝시간·실린더처럼 고정 센서 역할이 필요한 모델에는 정확한 현장 매핑이 필요합니다.
+읽기 단계에서 이름만 변환하며 모델 가중치·수치 배열·채널 순서·저장된 점수는 변경하지 않습니다.
+기존 리포트 이미지 캐시와 익명화 이후 캐시는 별도로 관리합니다.
+
 ## 빠른 시작 — 내려받고 바로 빌드
 
 이 저장소를 받으면 최상위에 **`앱빌드.bat`** 이 있습니다. 더블클릭하면 끝입니다.
 
 ```
-git clone https://github.com/mithril-research/Semes_app.git
-cd Semes_app
+git clone https://github.com/mithril-research/Semes_app_optima_public.git
+cd Semes_app_optima_public
 앱빌드.bat          ← 더블클릭
 ```
 
@@ -169,8 +188,8 @@ CPU 사용 제한 설정은 torch 에도 적용됩니다. torch 는 환경변수
 학습 탭에서 폴더·필터·GPU 를 고르고 여러 작업을 동시에 돌릴 수 있습니다.
 
 ```
-git clone https://github.com/mithril-research/Semes_app.git
-cd Semes_app
+git clone https://github.com/mithril-research/Semes_app_optima_public.git
+cd Semes_app_optima_public
 ./우분투_학습앱.sh setup      # 최초 1회 — venv + 패키지 + CUDA torch
 ./우분투_학습앱.sh            # 실행 → http://127.0.0.1:8000
 PORT=8010 ./우분투_학습앱.sh  # 포트 변경

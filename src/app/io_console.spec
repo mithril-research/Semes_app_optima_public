@@ -23,7 +23,7 @@ datas, binaries, hiddenimports = [], [], []
 
 # ── 무거운 서드파티 수집 ──
 #   ★ torch 제외(≈450MB↓) — 추론은 onnxruntime(경량)로. matplotlib/pandas/onnxruntime 수집.
-for pkg in ("matplotlib", "pandas", "onnxruntime"):
+for pkg in ("matplotlib", "pandas", "onnxruntime", "sklearn", "joblib", "scipy"):
     d, b, h = collect_all(pkg)
     datas += d; binaries += b; hiddenimports += h
 

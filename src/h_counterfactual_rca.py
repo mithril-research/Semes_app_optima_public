@@ -1,6 +1,6 @@
 """Counterfactual RCA for H control-variable adjustment candidates.
 
-This module treats h_005-style H control variables as intervention inputs.
+This module treats h_005_PV-style H control variables as intervention inputs.
 It sweeps whole-wafer deltas, reruns the existing PT TCN model, and reports
 which adjustment candidates reduce P/T reconstruction error over the full
 process. The focus ProcessStep is still reported as diagnostic context and
@@ -8,7 +8,6 @@ matches the slope-valve RCA rule: the ProcessStep with the largest slope in the
 PT all-sensor accumulated reconstruction-error curve.
 """
 from __future__ import annotations
-
 
 import argparse
 import csv
@@ -21,12 +20,12 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+from src.sensor_schema import in_group, paired_zone
 
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     __package__ = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 
-from .sensor_schema import in_group, paired_zone
 from .config import IOConfig
 from .related_overlay import (
     _csv_files,
@@ -839,7 +838,7 @@ def _write_markdown_report(path: Path, wafer: dict, control_summaries: list[dict
         lines.extend([
             "## 시각화 요약",
             "",
-            f"[이미지 생략: 익명화 배포본]",
+            f"![H 제어변수 counterfactual 시각화]({plot_rel})",
             "",
         ])
     lines.extend([
