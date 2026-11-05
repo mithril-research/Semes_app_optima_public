@@ -97,6 +97,21 @@ function state(box){return Array.from(box.querySelectorAll('.sc-scroll')).map(sc
  scroll.scrollLeft=600;await pause();ok(Math.abs(axis.getBoundingClientRect().left-left)<1,'component axis pinned');
  panel('cylinder').querySelector('summary').click();panel('tcn').querySelector('summary').click();await pause();
  ok(Array.from(box.querySelectorAll('.scatter-model-panel')).every(p=>p.open),'all four panels expand at once');
+ ok(chart('integrated').querySelectorAll('.scatter-range-analyze').length===1,'integrated scatter keeps range analysis');
+ ok(['tcn','step_time','cylinder'].every(mode=>!chart(mode).querySelector('.scatter-range-analyze')),'model-only scatters omit range analysis');
+ var scale=chart('tcn').querySelector('.sc-scale');scale.value='60m';scale.dispatchEvent(new Event('change'));await pause();
+ ok(['integrated','tcn','step_time','cylinder'].every(mode=>chart(mode).querySelector('.sc-scale').value==='60m'),'axis unit change updates all four plots');
+ ok(chart('integrated')._curationRangeSelection.ranges.length===1,'shared scale retains integrated selection');
+ var sourceScroll=chart('step_time').querySelector('.sc-scroll');sourceScroll.scrollLeft=(sourceScroll.scrollWidth-sourceScroll.clientWidth)/3;await pause();
+ function ratio(mode){var el=chart(mode).querySelector('.sc-scroll');return el.scrollLeft/(el.scrollWidth-el.clientWidth);}
+ ok(['integrated','tcn','step_time','cylinder'].every(mode=>Math.abs(ratio(mode)-1/3)<.002),'scrolling one model synchronizes all four');
+ await new Promise(r=>setTimeout(r,100));ok(Math.abs(ratio('step_time')-1/3)<.002,'synchronized scroll has no feedback loop');
+ var sensorScroll=chart('integrated').querySelectorAll('.sc-scroll')[1];sensorScroll.scrollLeft=(sensorScroll.scrollWidth-sensorScroll.clientWidth)*.6;await pause();
+ ok(['integrated','tcn','step_time','cylinder'].every(mode=>Math.abs(ratio(mode)-.6)<.002),'sensor scroll also synchronizes model views');
+ data.points[0].score_components.step_time={available:false,reason:'missing endpoint'};data.points[data.points.length-1].score_components.step_time={available:false,reason:'missing endpoint'};
+ drawScatter(box,data,box._opts);await pause();
+ ok(chart('step_time').querySelector('.sc-scroll svg').viewBox.baseVal.width===chart('integrated').querySelector('.sc-scroll svg').viewBox.baseVal.width,'missing model endpoints preserve shared time domain');
+
  ok(shownScore('cylinder').includes('이상점수 5.60'),'cylinder tooltip retains actual score above cap');
  ok(shownScore('tcn').includes('이상점수 0.50'),'TCN retains original score');
  ok(!chart('tcn').querySelector('.sc-thr').disabled,'TCN controls independent of integrated threshold');
@@ -112,11 +127,17 @@ function state(box){return Array.from(box.querySelectorAll('.sc-scroll')).map(sc
  var siblingSvg=chart('step_time').querySelector('svg');
  chart('cylinder').querySelector('.sc-size').click();await pause();
  ok(chart('step_time').querySelector('svg')===siblingSvg,'one model resize does not rebuild siblings');
+ chart('cylinder').querySelector('.sc-size').click();await pause();
  panel('cylinder').querySelector('summary').click();await pause();
  ok(!panel('cylinder').open&&panel('step_time').open&&panel('tcn').open,'closing one leaves others open');
+ var sensorScale=chart('integrated').querySelector('.sensor-scale');sensorScale.value='30m';sensorScale.dispatchEvent(new Event('change'));await pause();
+ ok(chart('cylinder')._opts.scaleMin==='30m','closed panel receives latest shared scale');
+
  drawScatter(box,data,box._opts);await pause();
  ok(!panel('cylinder').open&&panel('step_time').open&&panel('tcn').open,'open states survive parent refresh');
  panel('cylinder').querySelector('summary').click();await pause();ok(panel('cylinder').open,'collapsed model reopens independently');
+ ok(chart('cylinder').querySelector('.sc-scale').value==='30m','reopened panel renders with shared scale');
+ ok(Math.abs(ratio('cylinder')-ratio('step_time'))<.002,'reopened panel joins current scroll position');
  data.points.forEach(function(p){p.score_components.cylinder={available:false,reason:'DSV 모델 없음'};});
  drawScatter(box,data,box._opts);await pause();
  ok(panel('cylinder').textContent.includes('DSV 모델 없음'),'missing model reason visible');

@@ -3274,7 +3274,7 @@ function mountSensorScatter(box,pts,geom){
   var axisMax=data._sensorYMax||(data._sensorYMax={});
   function live(){return !controller.signal.aborted&&host.parentNode===box;}
   function persist(){data._sensorSelection.temperature=selected.temperature.slice();data._sensorSelection.pressure=selected.pressure.slice();}
-  function scrollSync(el){el.addEventListener('scroll',function(){
+  function scrollSync(el){if(box._scatterOwner){bindModelScatterScroll(box,el);return;}el.addEventListener('scroll',function(){
     var left=el.scrollLeft;box.querySelectorAll('.sc-scroll').forEach(function(other){if(other!==el&&Math.abs(other.scrollLeft-left)>1)other.scrollLeft=left;});
   });}
   scrollSync(box.querySelector('.sc-scroll'));
@@ -4825,7 +4825,7 @@ function curationRangeGroups(points,positions,ranges){
   return curationDragGroups(points,selected).map(function(group){return Object.assign({},group,{displayRows:selected.filter(function(p){return Number.isFinite(p.ratio)&&isFinite(Date.parse(p.ts));}),rangeNumber:1,rangeCount:ranges.length,timeSegments:timeSegments,selectionRange:ranges.map(function(range){return range.slice();}).sort(function(a,b){return a[0]-b[0]||a[1]-b[1];}),lot:'선택 구간 통합'});});
 }
 function mountScatterDrag(box,data,points,positions){
-  if(box.id!=='drillTrendChart'&&!box._modelChart)return;
+  if(box.id!=='drillTrendChart'&&(!box._modelChart||box._scoreMode!=='integrated'))return;
   if(box._dragAnalysis&&box._dragAnalysis._curationSupplyAbort)box._dragAnalysis._curationSupplyAbort.abort();
   var scroll=box.querySelector('.sc-scroll'),svg=scroll&&scroll.querySelector('svg');if(!svg)return;
   var controls=document.createElement('div');controls.style.cssText='margin:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap';controls.innerHTML='<b>구간 분석</b><button class="btn primary scatter-range-analyze">선택 구간 분석</button><button class="btn soft scatter-drag-clear">전체 구간 해제</button><span class="muted">X축에서 시작·끝 클릭 · 여러 구간 통합 분석</span><span class="scatter-range-status" role="status"></span><div class="scatter-range-list" style="width:100%;display:flex;gap:8px;flex-wrap:wrap"></div>';scroll.before(controls);
@@ -4867,6 +4867,42 @@ function scatterModelMissing(d,mode){
   var reasons=new Set();(d.points||[]).forEach(function(p){var c=(p.score_components||{})[mode];reasons.add(c&&c.reason||'저장된 모델 점수 없음');});
   return Array.from(reasons).join(' · ');
 }
+function bindModelScatterScroll(chart,onlyScroll){
+  var owner=chart._scatterOwner;if(!owner)return;
+  var shared=owner._sharedScatter;
+  function apply(scroll){
+    if(!scroll.isConnected||!scroll.clientWidth)return;
+    var left=shared.scrollRatio*Math.max(0,scroll.scrollWidth-scroll.clientWidth);
+    if(Math.abs(scroll.scrollLeft-left)>1)scroll.scrollLeft=left;
+    scroll._modelSyncLeft=scroll.scrollLeft;
+  }
+  var scrolls=onlyScroll?[onlyScroll]:Array.from(chart.querySelectorAll('.sc-scroll'));
+  scrolls.forEach(function(scroll){
+    if(!scroll._modelScrollBound){
+      scroll._modelScrollBound=true;
+      scroll.addEventListener('scroll',function(){
+        if(!scroll.isConnected||!scroll.clientWidth)return;
+        if(scroll._modelSyncLeft!=null&&Math.abs(scroll.scrollLeft-scroll._modelSyncLeft)<=1)return;
+        var range=scroll.scrollWidth-scroll.clientWidth;if(range<=0)return;
+        shared.scrollRatio=scroll.scrollLeft/range;
+        Object.keys(owner._modelPanels).forEach(function(mode){owner._modelPanels[mode].chart.querySelectorAll('.sc-scroll').forEach(function(other){if(other!==scroll)apply(other);});});
+      },{passive:true});
+    }
+    apply(scroll);
+  });
+}
+function setModelScatterScale(chart,scale){
+  var owner=chart._scatterOwner,shared=owner._sharedScatter;
+  shared.scaleMin=scale;owner._opts=Object.assign({},owner._opts,{scaleMin:scale});scScaleSave(scale);
+  Object.keys(owner._modelPanels).forEach(function(mode){
+    var entry=owner._modelPanels[mode];entry.chart._opts=Object.assign({},entry.chart._opts||owner._opts,{scaleMin:scale});entry.dirty=true;
+  });
+  Object.keys(owner._modelPanels).forEach(function(mode){
+    var entry=owner._modelPanels[mode];
+    if(entry.chart.parentNode&&entry.chart.parentNode.open){drawScatter(entry.chart,owner._data,entry.chart._opts);entry.dirty=false;}
+  });
+}
+
 function mountScatterModes(box,d,opts){
   if(box._dragAnalysis&&box._dragAnalysis._curationSupplyAbort)box._dragAnalysis._curationSupplyAbort.abort();
   if(box._curationSupplyAbort)box._curationSupplyAbort.abort();
@@ -4888,7 +4924,9 @@ function mountScatterModes(box,d,opts){
     d._sensorYMax=SC_SENSOR_VIEW_STATE.ymax;
     if(scMountSteps(box,d,opts))return;
   }
-  box._data=d; box._opts=opts;
+  box._data=d;
+  var shared=box._sharedScatter||(box._sharedScatter={scaleMin:opts.scaleMin||scScaleLoad(),scrollRatio:0});
+  box._opts=opts=Object.assign({},opts,{scaleMin:shared.scaleMin});
   var states=box._modelPanels||(box._modelPanels={});
   Array.from(box.children).filter(function(el){return el.classList.contains('scatter-model-panel');}).forEach(function(panel){
     var entry=states[panel.dataset.scoreMode];if(entry){entry.open=panel.open;entry.scrolls=Array.from(entry.chart.querySelectorAll('.sc-scroll')).map(function(el){return {el:el,left:el.scrollLeft};});}
@@ -4898,13 +4936,14 @@ function mountScatterModes(box,d,opts){
   [['integrated','종합'],['tcn','TCN'],['step_time','스텝 소요시간'],['cylinder','실린더']].forEach(function(item){
     var entry=states[item[0]];
     if(!entry){var chart=document.createElement('div');chart.className='scatter-mode-content';chart.style.cssText='padding-top:8px';chart._modelChart=true;chart._scoreMode=item[0];chart._fitWidth=box._fitWidth;chart._scatterExpanded=box._scatterExpanded;entry=states[item[0]]={open:item[0]==='integrated',chart:chart};}
+    entry.chart._scatterOwner=box;entry.chart._opts=Object.assign({},entry.chart._opts||opts,{scaleMin:shared.scaleMin});
     var panel=document.createElement('details');panel.className='scatter-model-panel';panel.dataset.scoreMode=item[0];panel.open=entry.open;
     panel.style.cssText='border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:8px 12px';
     var summary=document.createElement('summary');summary.textContent=item[1]+' 산점도';summary.style.cssText='cursor:pointer;font-weight:600;padding:6px 0';panel.appendChild(summary);panel.appendChild(entry.chart);box.appendChild(panel);
     (entry.scrolls||[]).forEach(function(saved){saved.el.scrollLeft=saved.left;});
     var rendered=false;
-    function renderPanel(){if(rendered||!panel.open||!panel.isConnected)return;rendered=true;drawScatter(entry.chart,d,entry.chart._opts||opts);}
-    panel.addEventListener('toggle',function(){if(!panel.isConnected)return;entry.open=panel.open;if(panel.open){renderPanel();pinScatterYAxis(entry.chart.querySelector('.sc-scroll'));}});
+    function renderPanel(){if((rendered&&!entry.dirty)||!panel.open||!panel.isConnected)return;rendered=true;drawScatter(entry.chart,d,entry.chart._opts);entry.dirty=false;}
+    panel.addEventListener('toggle',function(){if(!panel.isConnected)return;entry.open=panel.open;if(panel.open){renderPanel();bindModelScatterScroll(entry.chart);pinScatterYAxis(entry.chart.querySelector('.sc-scroll'));}});
     renderPanel();
   });
   syncTrendAnalysis(box,d.points||[],{H:280});
@@ -4974,7 +5013,9 @@ function drawScatterPlot(box,d,opts){
   // X축: '실제 종료시각' 매핑. 축 범위 = '점이 실제로 찍힌 구간'으로 자동 크롭(양옆 여백 최소).
   //  예: 한달 조회라도 데이터가 하루뿐이면 그 하루 근방만 표시 → 좌우 빈칸 제거.
   var times=pts.map(function(p){var t=new Date(p.ts).getTime(); return isFinite(t)?t:null;});
-  var tv=times.filter(function(t){return t!=null;});
+  var axisPoints=box._modelChart?(d.points||[]).slice().sort(function(a,b){return String(a.ts||'').localeCompare(String(b.ts||''));}):pts;
+  var tv=axisPoints.map(function(p){return Date.parse(p.ts);}).filter(Number.isFinite);
+  var ordinalIndices=new Map();axisPoints.forEach(function(p,i){ordinalIndices.set(JSON.stringify([p.ts,p.wafer_id]),i);});
   // 가로축 시간척도(사용자 선택). 폭 = (기간/척도) × 칸폭 → 척도가 촘촘할수록 넓어져 점이 펴짐.
   var SCALE_MS={'10m':600000,'30m':1800000,'60m':3600000,'6h':21600000,'12h':43200000,'day':86400000};
   // ★ 가로축 척도는 box._opts(=DOM 요소)에만 있어서, 챔버/유형을 바꿔 산점도를 다시
@@ -4998,14 +5039,14 @@ function drawScatterPlot(box,d,opts){
     W=Math.max(1160, Math.min(40000, Math.round(units*46+pad.l+pad.r)));   // 척도 1칸=46px
     needScroll=(W>1200);
   } else {
-    needScroll=(n>45); W=needScroll?Math.max(1160,Math.min(12000,n*24)):1160;
+    needScroll=(axisPoints.length>45); W=needScroll?Math.max(1160,Math.min(12000,axisPoints.length*24)):1160;
   }
   var fit=box._fitWidth!==false;
   if(compact||fit){W=Math.max(320,Math.floor(box.clientWidth-14));needScroll=false;}
   var iw=W-pad.l-pad.r;
   var x=useTime
     ? function(i){ var t=times[i]; if(t==null) return pad.l+iw/2; return pad.l+iw*(t-tmin)/((tmax-tmin)||1); }
-    : function(i){ return pad.l+(n<=1?iw/2:iw*i/(n-1)); };
+    : function(i){var index=ordinalIndices.get(JSON.stringify([pts[i].ts,pts[i].wafer_id]));return pad.l+(axisPoints.length<=1?iw/2:iw*index/(axisPoints.length-1));};
   var y=function(v){return pad.t+ih*(1-(v-ymin)/((ymax-ymin)||1));};
   var y1=y(REF);
   // ★ 밴드: 1~warn 주의 / warn~crit 경고 / crit 이상 심각 (임계의 '배수'라 임계가 바뀌면 함께 이동)
@@ -5171,6 +5212,7 @@ function drawScatterPlot(box,d,opts){
   if(d._stepKey||scoreMode==='integrated'||scoreMode==='step_time'||scoreMode==='cylinder')box.querySelectorAll('.sc-thr,.sc-thr-reset,.sc-trc').forEach(function(el){el.disabled=true;el.title=scoreMode==='integrated'?'종합 점수는 모델별 임계 대비 최댓값이며 판정 기준은 1입니다.':scoreMode==='step_time'||scoreMode==='cylinder'?'모델별 점수는 해당 모델의 임계 대비 비율이며 판정 기준은 1입니다.':'선택 스텝은 학습 OK 평균+3.5σ 임계를 사용합니다.';});
   mountScatterDrag(box,d,pts,pts.map(function(p,i){return {x:x(i),y:y(Math.min(p.ratio,ymax))};}));
   pinScatterYAxis(box.querySelector('.sc-scroll'));
+  bindModelScatterScroll(box);
   // LOT 기반 큐레이션 비활성화 (드래그 영역 분석은 유지).
   // mountScoreCuration(box,d);
   mountSensorScatter(box, pts, {W:W,H:H,compact:compact,needScroll:needScroll,xs:pts.map(function(p,i){return x(i);}),xlab:xlab});
@@ -5181,6 +5223,7 @@ function drawScatterPlot(box,d,opts){
   if(sizeButton)sizeButton.onclick=function(){box._scatterExpanded=compact;drawScatter(box,box._data);};
   var ysc=box.querySelector('.sc-scale');
   if(ysc) ysc.addEventListener('change',function(){
+    if(box._scatterOwner){setModelScatterScale(box,ysc.value);return;}
     if(box.id==='drillTrendChart'){
       box._restoreTrendPanels=trendAnalysisLoaded(box);
       ['sensorValueView','differenceView','equipmentValueView','sensorValueViewOther','differenceViewOther','equipmentValueViewOther'].forEach(function(key){var view=SC_SENSOR_VIEW_STATE[key]||(SC_SENSOR_VIEW_STATE[key]={});view.timeScale=ysc.value;view.scrollLeft=0;});
