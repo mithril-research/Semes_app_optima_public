@@ -69,23 +69,24 @@ setup=r'''
  g.querySelectorAll('button')[0].click();ok(!g.querySelector('.cylinder-items')&&toggle.getAttribute('aria-expanded')==='false','switching to step time resets group');
 
  g.querySelector('.step-time-items button').click();
- ok(g.textContent.includes('PV 설명 없음'),'old archive explains missing PV');
+ ok(g.querySelector('.step-time-trends')&&!g.querySelector('.step-pv-detail'),'old archive keeps duration trends without PV notice');
  stepToggle.click();ok(!g.querySelector('.step-time-items')&&stepToggle.getAttribute('aria-expanded')==='false','step group collapses');
  stepToggle.click();ok(g.querySelector('.step-time-items button'),'step group reopens');
- var event={available:true,step:3,occurrence:1,transition_type:'time',transition_confidence:.8,target_sensor:'p_008_PV',target_value:5,target_direction:'up',normal_reach_seconds:2,actual_reach_seconds:4,reach_delay_seconds:2,predicted_reach_seconds:3.8,duration_seconds:5,explanation_confidence:'high',validation_mae_seconds:.2,target_grid_seconds:[0,1,2,3,4,5],actual_target_trajectory:[0,1,2,3,5,6],candidates:[{sensor:'A',contribution_seconds:1.5,response_status:'expected_response_missing',grid_seconds:[0,1,2,3],actual_trajectory:[0,0,0,0],normal_trajectory:[0,1,2,3],impact_windows:[{start_seconds:0,end_seconds:1,contribution_seconds:1},{start_seconds:1,end_seconds:2,contribution_seconds:-.3}],primary_impact_window:{start_seconds:0,end_seconds:1,contribution_seconds:1}},{sensor:'B',contribution_seconds:-.5,response_status:'accelerated_response',grid_seconds:[0,1,2,3],actual_trajectory:[1,2,3,4],normal_trajectory:[0,1,2,3],impact_windows:[{start_seconds:2,end_seconds:3,contribution_seconds:-.5}],primary_impact_window:{start_seconds:2,end_seconds:3,contribution_seconds:-.5}}]};
- items[0]._children[0]._pv={available:true,primary_step:3,events:[event,{available:false,step:3,occurrence:2,reason:'두 번째 occurrence 모델 없음'},{available:true,step:5,occurrence:1}]};
+ // Legacy PV payloads must never re-enable removed influence displays.
+ components.step_time.pv={available:true,primary_step:3,events:[{available:true,step:3,
+   target_sensor:'p_008_PV',candidates:[{sensor:'A',contribution_seconds:1.5,impact_windows:[]}]}]};
+ components.step_time.step_details.push({step:4,label:'ProcessStep 4 소요시간',actual:7,median:6,q25:5,q75:7,robust_deviation:1,contribution:.1});
+ items=auxiliarySensorItems(components);
+ ok(items[0]._children.every(function(item){return !Object.prototype.hasOwnProperty.call(item,'_pv');}),'step entries do not carry PV influence data');
  renderSensorBars(g,'/unused',items,{appScore:true});g.querySelector('.step-time-group-toggle').click();g.querySelector('.step-time-items button').click();
- ok(g.querySelectorAll('.pv-events button').length===2,'only matching step occurrences');
- ok(g.querySelectorAll('.pv-plot').length===3,'target candidate and impact graphs');
- ok(g.querySelectorAll('.pv-shade').length===3,'shared impact shading');
- ok(g.textContent.includes('정상 시 기대되는 반응이 나타나지 않음'),'unresponsive candidate retained');
- ok(g.textContent.includes('압력 원인 해석 신뢰도가 낮습니다'),'time transition caution');
- ok(g.querySelector('.pv-impact-bar[data-value="1"]').getAttribute('fill')==='#dc5656','delay positive red');
- ok(g.querySelector('.pv-impact-bar[data-value="-0.3"]').getAttribute('fill')==='#3478ce','advance negative blue');
- g.querySelectorAll('.pv-candidates button')[1].click();ok(g.querySelector('.pv-sensor').textContent.includes('B'),'candidate switches plot');
- g.querySelector('.pv-from').value=1;g.querySelector('.pv-to').value=4;g.querySelector('.pv-apply').click();
- ok(Array.from(g.querySelectorAll('.pv-plot')).every(function(x){return x.dataset.xFrom==='1'&&x.dataset.xTo==='4';}),'all elapsed axes synchronized');
- g.querySelectorAll('.pv-events button')[1].click();ok(g.textContent.includes('두 번째 occurrence 모델 없음')&&!g.querySelector('.pv-plot'),'missing occurrence never substitutes another event');
+ ok(g.querySelectorAll('.step-time-row').length===2,'every step duration remains visible');
+ ok(g.querySelector('.step-time-trends').textContent.includes('스텝 3')&&g.querySelector('.step-time-trends').textContent.includes('스텝 4'),'duration labels retained');
+ ok(g.querySelectorAll('.step-time-trends svg').length===2,'actual and normal duration plots retained');
+ ok(g.querySelectorAll('.step-time-trends line').length===2,'normal median markers retained');
+ ok(!g.querySelector('.step-pv-detail,.pv-impact,.pv-candidates,.pv-plot,table'),'only duration trends appear in step detail');
+ ok(!g.textContent.includes('원인 후보')&&!g.textContent.includes('기여도')&&!g.textContent.includes('Robust deviation'),'influence and contribution text removed');
+ ok(!g.querySelector('.step-time-items button').title.includes('기여도'),'influence removed from step tooltip');
+ ok(typeof renderStepPV==='undefined'&&typeof renderPVEvent==='undefined','PV rendering functions removed');
 
  for(var group of items){
    var fixture=Object.assign({},group),template=group._children[0];

@@ -9134,7 +9134,6 @@ def api_wafer_sensor(wid: str, rank: int):
 def api_export_html(detail_limit: int = 50, sensor_top: int = 12,
                     include_scores: bool = True, include_trends: bool = True,
                     include_detail: bool = True, trend_metrics: str = "mean,min,max,std",
-                    include_chamber_means: bool = False,
                     include_differences: Optional[bool] = None,
                     include_equipment: Optional[bool] = None,
                     include_recipe: Optional[bool] = None, trend_pairs: str = "[]"):
@@ -9198,24 +9197,22 @@ def api_export_html(detail_limit: int = 50, sensor_top: int = 12,
             wafers=[ScatterSensorWaferReq(date=w["date"], wid=w["wafer_id"]) for w in batch]))
         for w, row in zip(batch, result["wafers"]):
             scatter_scores[w["date"] + "/" + w["wafer_id"]] = row
-    for w in wafers if (include_scores or include_trends or include_chamber_means) else []:
+    for w in wafers if (include_scores or include_trends) else []:
         key = w["date"] + "/" + w["wafer_id"]
         try:
             arch = _load_archive(w["date"], w["wafer_id"])
-            if arch is not None and (include_trends or include_chamber_means or include_scores):
+            if arch is not None and (include_trends or include_scores):
                 trend_summary = _trend_summary(w["date"], w["wafer_id"], pairs=(export_pairs if include_differences else []) + [["d_001_PV", "d_004_PV"]])
                 full_stats = trend_summary["summary"] if trend_summary is not None else difference_series(arch, pairs=(export_pairs if include_differences else []) + [["d_001_PV", "d_004_PV"]])
                 export_metrics = list(metrics) if include_trends else []
-                if include_chamber_means and 'mean' not in export_metrics:
-                    export_metrics.append('mean')
                 sensor_differences[key] = compact_trend_export(full_stats, export_metrics)
                 if ['d_001_PV', 'd_004_PV'] not in export_pairs:
                     sensor_differences[key]['series'] = [v for v in sensor_differences[key]['series'] if not (v.get('left') == 'd_001_PV' and v.get('right') == 'd_004_PV')]
                 if not include_differences:
                     sensor_differences[key]['series'] = []
-                if not (include_differences or include_equipment or include_chamber_means):
+                if not (include_differences or include_equipment):
                     sensor_differences[key]['sensor_series'] = []
-                if not (include_differences or include_equipment or include_chamber_means):
+                if not (include_differences or include_equipment):
                     del sensor_differences[key]
             if arch is not None and (include_recipe or include_scores):
                 step_times[key] = {'cylinder_difference': next((v for v in full_stats.get('series', []) if v.get('left') == 'd_001_PV' and v.get('right') == 'd_004_PV'), None), 'valve_phases': full_stats.get('valve_phases'), 'process_steps': full_stats.get('process_steps', []), 'zero_steps': full_stats.get('zero_steps', []), 'zero_step_version': full_stats.get('zero_step_version', 0), 'sensor_scope': full_stats.get('sensor_scope'), 'sensor_metrics': step_sensor_metrics(full_stats), 'step_timing': _wafer_step_timing(w['wafer_id'], {'meta': trend_summary['meta']} if trend_summary is not None else arch),
@@ -9303,7 +9300,7 @@ def api_export_html(detail_limit: int = 50, sensor_top: int = 12,
            "sensors": sens.get("input_sensors") or [], "io": sens.get("io") or [],
            "recon_sensors": sens.get("recon_sensors") or [],
            "trend_export": {"metrics": metrics, "individual_steps": True},
-           "export_features": {"scores": include_scores, "trends": include_trends, "differences": include_differences, "equipment": include_equipment, "recipe": include_recipe, "detail": include_detail, "chamber_means": include_chamber_means},
+           "export_features": {"scores": include_scores, "trends": include_trends, "differences": include_differences, "equipment": include_equipment, "recipe": include_recipe, "detail": include_detail},
            "sensor_differences": sensor_differences, "step_times": step_times,
            "scatter_scores": scatter_scores, "offline_scores": offline_scores.payload(), "model_id": _model_id(),
            # ★ 표시 판정 규칙(밴드 경계·모드·임계)을 함께 저장 — 내보낸 HTML 이 기본값(2/3)으로

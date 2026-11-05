@@ -75,7 +75,6 @@ class BoundaryZeroTests(unittest.TestCase):
         html=Path('src/app/static/index.html').read_text()
         code=html[html.index('function differenceStats('):html.index('function differenceSummary(')]
         code+=html[html.index('function durationStepRange('):html.index('// A user-selected reference period')]
-        code+=html[html.index('function chamberMeanPhaseName('):html.index('function renderChamberMeanAutoPlot(')]
         code+='''
 function assert(v,m){if(!v)throw Error(m);}
 var s={step_stats:{zero_start:{mean:12},zero_end:{mean:110},1:{mean:30}}};
@@ -91,9 +90,7 @@ assert(durationRangeSeconds(r,'zero_end')===4,'end seconds');
 assert(durationSensorValue(r,'P','zero_end','mean')===110,'end mean');
 assert(durationSensorValue(r,'P','zero_start','max')===14,'start peak');
 assert(durationRangeSeconds({},'zero_end')===null,'missing not zero');
-var points=[],rows={};[1,2].forEach(function(ch){for(var i=0;i<3;i++){var wid=ch+'_'+i;points.push({wafer_id:wid,ts:'2026-10-20T00:0'+i+':00',chamber:'dsv'+ch,recipe:'A'});rows['2026-10-20/'+wid]={sensor_series:[{sensor:'P',step_stats:{zero_start:{mean:ch*10},zero_end:{mean:ch*100}}}]};}});
-var result=chamberMeanAuto(points,rows,{phases:['zero_end']});
-assert(result.ranked.length===1&&result.ranked[0].label==='스텝 00번','zero comparison without valves');
+
 '''
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'test.js';path.write_text(code)

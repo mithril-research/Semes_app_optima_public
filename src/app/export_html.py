@@ -23,7 +23,7 @@ _MOCK_TMPL = r"""
   var DETAIL = __DETAIL__;   // {"date/wid": {meta, wseries, sensorsAll, sensorSeries:{j:...}, z:[[..]], cols:[..]}}
   var CFG = __CFG__;
   window.SEMES_TREND_EXPORT = CFG.trend_export || null;
-  window.SEMES_EXPORT_FEATURES = CFG.export_features || {scores:true,trends:true,detail:true,chamber_means:true};
+  window.SEMES_EXPORT_FEATURES = CFG.export_features || {scores:true,trends:true,detail:true};
   var RECIPES = CFG.recipes||[];                 // 데이터에 실제로 있는 유형(체크박스용)
   var KNOWN_RECIPES = CFG.known_recipes||RECIPES; // 모델이 아는 레시피(배율 설정용)
   var SENSORS = CFG.sensors||[];
@@ -735,7 +735,7 @@ _MOCK_TMPL = r"""
     if(!window.SEMES_EXPORT_FEATURES.detail){var tab=document.querySelector('.gnb [data-view="detail"]');if(tab)tab.style.display='none';}
     var b=document.createElement('div');
     b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:9999;background:#0f766e;color:#fff;font-size:12px;font-weight:700;text-align:center;padding:4px 0';
-    b.textContent='데모(읽기전용) — 포함: 기본 화면'+(window.SEMES_EXPORT_FEATURES.scores?' · 센서/스텝 점수':'')+(window.SEMES_EXPORT_FEATURES.trends?' · 센서값 추이':'')+(window.SEMES_EXPORT_FEATURES.chamber_means?' · 챔버별 스텝 평균 차이 감지':'')+(window.SEMES_EXPORT_FEATURES.detail?' · 이상분석 상세':'');
+    b.textContent='데모(읽기전용) — 포함: 기본 화면'+(window.SEMES_EXPORT_FEATURES.scores?' · 센서/스텝 점수':'')+(window.SEMES_EXPORT_FEATURES.trends?' · 센서값 추이':'')+(window.SEMES_EXPORT_FEATURES.detail?' · 이상분석 상세':'');
     document.body.appendChild(b); document.body.style.paddingTop='24px';
 
     // ★ href 다운로드 링크(결과 CSV 등)는 fetch mock 이 가로챌 수 없다 — 브라우저가
@@ -792,8 +792,7 @@ def build_export_html(index_html: str, wafers: list, detail: dict, cfg: dict,
     wafers, detail, cfg = SN.normalize(wafers), SN.normalize(detail), SN.normalize(cfg)
     cfg = dict(cfg)
     features = dict(cfg.get("export_features") or {"scores": True, "trends": True, "detail": True})
-    features.setdefault("chamber_means", features.get("trends", True))
-    features = {key: bool(features.get(key, True)) for key in ("scores", "trends", "detail", "chamber_means")}
+    features = {key: bool(features.get(key, True)) for key in ("scores", "trends", "detail")}
     original = cfg.get("export_features") or {}
     for key in ("differences", "equipment", "recipe"):
         features[key] = bool(original.get(key, features["trends"]))
@@ -802,7 +801,7 @@ def build_export_html(index_html: str, wafers: list, detail: dict, cfg: dict,
     cfg["export_features"] = features
     if not features["detail"]:
         detail = {}
-    if not (features["differences"] or features["equipment"] or features["chamber_means"]):
+    if not (features["differences"] or features["equipment"]):
         cfg.pop("sensor_differences", None)
     if not (features["recipe"] or features["scores"]):
         cfg.pop("step_times", None)

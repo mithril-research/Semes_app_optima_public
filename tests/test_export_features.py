@@ -26,12 +26,13 @@ class ExportFeaturesTests(unittest.TestCase):
     def test_independent_trend_features(self):
         for differences, equipment, recipe in itertools.product((False, True), repeat=3):
             cfg = dict(export_features=dict(scores=False, detail=False, trends=False,
-                       chamber_means=False, differences=differences, equipment=equipment, recipe=recipe),
+                       chamber_means=True, differences=differences, equipment=equipment, recipe=recipe),
                        sensor_differences={'marker': 'CUSTOM_DIFFERENCE_DATA'},
                        step_times={'marker': 'CUSTOM_RECIPE_DATA'})
             html = build_export_html('<script></script>', [], {}, cfg)
             self.assertEqual('CUSTOM_DIFFERENCE_DATA' in html, differences or equipment)
             self.assertEqual('CUSTOM_RECIPE_DATA' in html, recipe)
+            self.assertNotIn('chamber_means', html)
             for key, value in [('differences', differences), ('equipment', equipment), ('recipe', recipe)]:
                 self.assertRegex(html, '"'+key+r'"\s*:\s*'+str(value).lower())
 
@@ -73,7 +74,7 @@ class ExportFeaturesTests(unittest.TestCase):
         ns['api_scatter_sensors'].assert_not_called()
 
 
-    def test_chamber_detection_exports_means_independently(self):
+    def test_export_preserves_selected_metrics_and_independent_trends(self):
         import numpy as np
         from unittest.mock import patch
         tree = ast.parse(Path('src/app/server.py').read_text())
@@ -108,23 +109,21 @@ class ExportFeaturesTests(unittest.TestCase):
         for trends in (False, True):
             with patch('src.app.export_html.build_export_html', return_value='snapshot') as build:
                 ns['api_export_html'](include_scores=False, include_detail=False,
-                    include_trends=trends, trend_metrics='std', include_chamber_means=True)
+                    include_trends=trends, trend_metrics='std')
                 cfg = build.call_args.args[3]
-            row = cfg['sensor_differences']['2026-09-28/w1']
-            stats = row['sensor_series'][0]['export_step_stats']['1']
-            self.assertEqual(stats['mean'], 10.)
-            self.assertEqual(set(stats), {'mean', 'std'} if trends else {'mean'})
+            self.assertNotIn('chamber_means', cfg['export_features'])
             self.assertEqual(cfg['trend_export']['metrics'], ['std'])
             self.assertEqual(bool(cfg['step_times']), trends)
             if trends:
+                row = cfg['sensor_differences']['2026-09-28/w1']
+                stats = row['sensor_series'][0]['export_step_stats']['1']
+                self.assertEqual(set(stats), {'std'})
                 self.assertEqual(cfg['step_times']['2026-09-28/w1']['sensor_metrics']['mean']['P_900']['1'], 10.)
                 self.assertEqual(cfg['step_times']['2026-09-28/w1']['sensor_metrics']['min']['P_900']['2'], 30.)
                 self.assertEqual(cfg['step_times']['2026-09-28/w1']['sensor_metrics']['std']['P_900']['1'], 0.)
-            if not trends:
-                self.assertEqual(row['series'], [])
-            cfg['sensor_differences']['test_marker'] = 'DETECTION_MEANS_PRESENT'
-            html = build_export_html('<script></script>', [], {}, cfg)
-            self.assertIn('DETECTION_MEANS_PRESENT', html)
+            else:
+                self.assertEqual(cfg['sensor_differences'], {})
+
         archive['meta']['sensor_cols'] = ['S_904', 'S_902']
         with patch('src.app.export_html.build_export_html', return_value='snapshot') as build:
             ns['api_export_html'](include_scores=False, include_detail=False, include_trends=False,

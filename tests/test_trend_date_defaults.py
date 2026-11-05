@@ -22,6 +22,6 @@ check(trendDateTimeValue('','',false),'');
 
  def test_all_trend_ranges_use_optional_time_controls(self):
   source=Path('src/app/static/index.html').read_text()
-  for selector in ('recipe-from','recipe-to','difference-from','difference-to','chamber-mean-from','chamber-mean-to','peak-detect-from','peak-detect-to'):
+  for selector in ('recipe-from','recipe-to','difference-from','difference-to','peak-detect-from','peak-detect-to'):
    self.assertRegex(source,r"trendDateTimeInput\([^;\n]*querySelector\('\."+selector+r"'\),")
   self.assertIn("(host._dateFields||{})[name]", source)

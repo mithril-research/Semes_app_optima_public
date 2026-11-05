@@ -23,6 +23,27 @@ var normal=Array(20).fill(.5);
             result = subprocess.run(['gjs', str(path)], capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_selected_sensor_priority_uses_mean_outlier_strength(self):
+        self.check_js("""
+var rows=Array.from({length:200},function(_,i){
+  return {valve_phases:{version:2,status:'ok',steps:{process:[1]}},
+    sensor_metrics:{mean:{A:{1:i===0?30:i<4?8:0},B:{1:i<3?20:0},Flat:{1:5}}},
+    step_timing:{steps:{1:{seconds:10}}}};
+});
+var before=JSON.stringify(rows),result=detectSelectedMeanSensors(rows,'process');
+assert(result.sensors.map(x=>x.sensor).join()==='B,A','average strength reverses maximum-based ranking');
+function maximum(item){return Math.max.apply(null,item.outliers.map(x=>Math.abs(x.value-item.normalMean)/item.cutoff));}
+var a=result.sensors[1],b=result.sensors[0];
+assert(maximum(a)>maximum(b)&&a.strength<b.strength,'single extreme does not dominate mean severity');
+result.sensors.forEach(function(item){
+  var expected=item.outliers.reduce((sum,x)=>sum+Math.abs(x.value-item.normalMean)/item.cutoff,0)/item.outliers.length;
+  assert(Math.abs(item.strength-expected)<1e-12,'strength averages every detected outlier');
+});
+assert(a.outliers.length===4&&b.outliers.length===3,'detection thresholds and membership preserved');
+assert(detectSelectedAutoPhase(rows).sensors[0].sensor==='B','automatic phase ranking uses average strength');
+assert(JSON.stringify(rows)===before,'measurements remain unchanged');
+""")
+
     def test_lot_ranking_context_and_missing_metadata(self):
         self.check_js('''
 var points=[];[.2,.4,1,3,.5,2,.3].forEach(function(value,l){series(Array(6).fill(value)).forEach(function(p,i){p.lot='L'+l;p.wafer_id='W_'+l+'_'+i;p.ts=new Date(Date.UTC(2026,0,1,0,l*10+i)).toISOString();points.push(p);});});

@@ -9,7 +9,7 @@ args=parser.parse_args()
 s=(Path(__file__).resolve().parents[1]/'src/app/static/index.html').read_text()
 js=s[s.index('function detectScoreRegions('):s.index('function drawScatter(')]
 js+=s[s.index('function sensorTrendEquipment('):s.index('function equipmentTrendColor(')]
-js+=s[s.index('async function fetchTrendBatch('):s.index('// Pure calculation: wafer means')]
+js+=s[s.index('async function fetchTrendBatch('):s.index('// Match the existing server filename convention:')]
 js+=s[s.index('function scSensorGroup('):s.index('function scSensorColors(')]
 js+=s[s.index('function customStepRange('):s.index('function scMountSteps(')]
 js+=s[s.index('var TREND_ROUTE_ORDER='):s.index('function syncTrendScroll(')]
@@ -115,7 +115,7 @@ function mount(data){box.innerHTML='';box._data=data;mountScoreCuration(box,data
  componentHost.innerHTML='';renderCurationCylinderComponents(componentHost,componentContext,componentRows,'process',false,n=>componentAxes[n]);ok(!componentHost.querySelector('.curation-supply-sensor[data-sensor="d_001_PV"][data-metric="min"]'),'component selection survives redraw');
  componentHost.innerHTML='';renderCurationCylinderComponents(componentHost,componentContext,cylinder,'process',false,n=>({}));ok(!componentHost.querySelector('.curation-cylinder-sensor')&&componentHost.querySelectorAll('.curation-supply-sensor').length===21,'missing component values not fabricated; difference remains');includeFirst=true;componentHost.innerHTML='';renderCurationCylinderComponents(componentHost,componentContext,componentRows,'process',false,n=>({}));ok(!componentHost.querySelector('.curation-lot-first'),'included first wafer not dimmed');componentHost.remove();
  var areaFixture=['t_002_PV','h_005_PV','p_005_PV','p_006_PV','t_001_PV','h_001_PV','d_001_PV'].map((sensor,i)=>({phase:'process',sensor:sensor,strength:20-i}));var areaTop=curationPhaseTopSensors(areaFixture,[]);ok(areaTop.length===6,'top three independently per area');ok(areaTop.filter(x=>x.area===1).length===3&&areaTop.filter(x=>x.area===3).length===2,'each area preserves own candidates');ok(areaTop.find(x=>x.sensor==='d_001_PV').area===6,'D sensor uses trend other area');
- var groups=curationSensorAreas(areaFixture,[],areaFixture.map(x=>x.sensor).concat(['T_903']));ok(groups.find(g=>g.area===1).detected===4&&groups.find(g=>g.area===1).tested===5,'counts include all detected and stable analyzable sensors before top3');var reordered=curationSensorAreas(areaFixture.map(x=>Object.assign({},x,{strength:x.area===6?99:x.strength})),['t_002_PV'],areaFixture.map(x=>x.sensor));ok(reordered.find(g=>g.area===1).detected===4&&reordered.find(g=>g.area===1).tested===4,'initial analysis counts retained after ignoring');var reversed=curationSensorAreas([{sensor:'t_001_PV',strength:40},{sensor:'t_002_PV',strength:2}],[]);ok(reversed[0].area===3,'areas sorted by strongest deviation rather than fixed sensor order');
+ var groups=curationSensorAreas(areaFixture,[],areaFixture.map(x=>x.sensor).concat(['t_005_PV']));ok(groups.find(g=>g.area===1).detected===4&&groups.find(g=>g.area===1).tested===5,'counts include all detected and stable analyzable sensors before top3');var reordered=curationSensorAreas(areaFixture.map(x=>Object.assign({},x,{strength:x.area===6?99:x.strength})),['t_002_PV'],areaFixture.map(x=>x.sensor));ok(reordered.find(g=>g.area===1).detected===4&&reordered.find(g=>g.area===1).tested===4,'initial analysis counts retained after ignoring');var reversed=curationSensorAreas([{sensor:'t_001_PV',strength:40},{sensor:'t_002_PV',strength:2}],[]);ok(reversed[0].area===3,'areas sorted by strongest deviation rather than fixed sensor order');
  var priorityPool=['t_005_PV','t_001_PV','p_008_PV','h_0211_PV','t_003_PV','d_001_PV','D_901'].map((sensor,i)=>({sensor:sensor,strength:100-i}));
  ['supply','wait','process','discharge'].forEach(phase=>{var pool=priorityPool.map(x=>Object.assign({},x,{phase:phase}));var grouped=curationSensorAreas(pool,[]);ok(grouped[0].priority===0,'phase related area before unrelated stronger deviation');ok(grouped.every(g=>!g.sensors.some((x,i)=>i&&curationSensorPriority(g.sensors[i-1])>curationSensorPriority(x))),'related sensors prioritized inside area');});
  ok(curationSensorPriority({phase:'wait',sensor:'d_001_PV'})===0,'D cylinder included despite trend other group');
@@ -144,6 +144,31 @@ function mount(data){box.innerHTML='';box._data=data;mountScoreCuration(box,data
  ok(!!rangeA.querySelector('.curation-ignored-sensor[data-sensor="extra0"]'),'reset in range B does not reset range A');
  var changed=await mountIsolation(Object.assign({},isolationRegion,{rangeNumber:1,rows:isolationRegion.rows.slice(1)}));
  ok(!changed.querySelector('.curation-ignored-sensor'),'changed wafer membership has independent exclusions');
+
+ var previousFetch=window.fetch,referenceRequests=0,referenceBatches=0;
+ var referencePoints=[0,1].map((i)=>Object.assign({},points[0],{wafer_id:'WUK_REF_'+i,ts:'2025-12-01T00:0'+i+':00',lot_first:i===0}));
+ var referenceRows=referencePoints.map((p,i)=>({date:p.ts.slice(0,10),wid:p.wafer_id,cylinder_difference:null,valve_phases:{version:2,status:'ok',steps:{supply:[1],wait:[3],process:[2],discharge:[4]}},step_timing:{steps:{1:{seconds:10},2:{seconds:20},3:{seconds:30},4:{seconds:40}}},sensor_metrics:{mean:{extra0:{1:5,2:10+i*20,3:0,4:0}}}}));
+ window.fetch=async function(url,opts){
+   if(url.startsWith('/api/scatter?')){referenceRequests++;return {ok:true,json:async()=>({model_id:'m',points:referencePoints.concat([Object.assign({},referencePoints[0],{wafer_id:'foreign',chamber:'dsv2'})])})};}
+   if(url==='/api/scatter/step-times'&&JSON.parse(opts.body).wafers.some(p=>p.wid.startsWith('WUK_REF_'))){referenceBatches++;return {ok:true,json:async()=>({model_id:'m',wafers:referenceRows})};}
+   return previousFetch(url,opts);
+ };
+ var from=rangeB.querySelector('.curation-reference-from'),to=rangeB.querySelector('.curation-reference-to'),apply=rangeB.querySelector('.curation-reference-apply');
+ from.value='2025-12-02T00:00';to.value='2025-12-01T00:00';apply.click();await pause();ok(referenceRequests===0&&rangeB.querySelector('.curation-reference-status').textContent.includes('올바르게'),'invalid reference range rejected before fetch');
+ from.value='2025-12-01T00:00';to.value='2025-12-01T00:01';apply.click();await pause();
+ var refSensor=rangeB.querySelector('.curation-auto-sensor[data-sensor="extra0"]');
+ ok(referenceBatches===1,'reference outside scatter period loads step measurements');
+ ok(refSensor.querySelector('.curation-reference-mean[data-field="temperature"]').dataset.mean==='20','custom period mean includes exact boundary wafers');
+ ok(refSensor.querySelector('.curation-reference-table').textContent.includes('20 (2매)'),'custom mean table reports valid wafer count and excludes foreign chamber');
+ ok(refSensor.querySelector('.curation-reference-summary').textContent.includes('2025-12-01'),'reference period labelled');
+ ok(!rangeA.querySelector('.curation-reference-mean'),'reference period isolated per selected range');
+ var rankBefore=refSensor.querySelector('summary').textContent;
+ includeFirst=false;apply.click();await pause();refSensor=rangeB.querySelector('.curation-auto-sensor[data-sensor="extra0"]');
+ ok(refSensor.querySelector('.curation-reference-mean[data-field="temperature"]').dataset.mean==='30','reference mean obeys first wafer exclusion');
+ includeFirst=true;apply.click();await pause();
+ ok(rangeB.querySelector('.curation-auto-sensor[data-sensor="extra0"] summary').textContent===rankBefore,'reference comparison does not change selected ranking');
+ rangeB.querySelector('.curation-reference-clear').click();ok(!rangeB.querySelector('.curation-reference-mean')&&!rangeB.querySelector('.curation-reference-table'),'reference clear removes extra averages');
+ window.fetch=previousFetch;
  rangeA.remove();rangeB.remove();changed.remove();
  var merged=curationRangeGroups(points,points.map((p,i)=>({x:i})),[[0,9],[10,20],[5,14]]);
  ok(merged.length===1&&merged[0].rows.length===21,'all selected ranges analyzed together without duplicate overlap');

@@ -308,7 +308,7 @@
   .sum-item .sr{font-size:14px;margin-top:2px;font-weight:600}
   /* ── 설정 뷰용 컴포넌트(조작 UI) ── */
 
-  /* Shared, compact controls for all four trend analyses. */
+  /* Shared, compact controls for all three trend analyses. */
   #view-trends{font-size:12px}
   #view-trends > .card > h2{font-size:17px;margin:0 0 10px}
   #trendAnalysisCharts{line-height:1.6}
@@ -1056,7 +1056,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem('optima-theme')=
 </div>
 
 <div class="view" id="view-settings">
-  <div class="muted" style="font-size:12px;margin-bottom:16px">앱 배포 버전: <strong>3.9</strong></div>
+  <div class="muted" style="font-size:12px;margin-bottom:16px">앱 배포 버전: <strong>4.0</strong></div>
 
   <div class="panel">
     <h2>검사 모델</h2>
@@ -1160,7 +1160,6 @@ try{document.documentElement.dataset.theme=localStorage.getItem('optima-theme')=
       <div id="exportFeatures" style="display:flex;flex-direction:column;gap:8px;width:100%;font-size:13px">
         <span>기본 포함: 오버뷰 · 전체 산점도 · 산포추세 · 이력 검색</span>
         <label><input type="checkbox" id="exportScores" checked> 센서별 이상점수 · 스텝/센서 선택 계산 · LOT 큐레이션</label>
-        <label><input type="checkbox" id="exportChamberMeans" checked> 챔버별 스텝 평균 차이 감지</label>
         <label><input type="checkbox" id="exportDifferences" checked> 센서값 차이 추이</label>
         <label><input type="checkbox" id="exportEquipment" checked> 설비별 센서값 추이</label>
         <label><input type="checkbox" id="exportRecipe" checked> 레시피별 추이 (웨이퍼별 센서값·스텝 시간/피크)</label>
@@ -3160,11 +3159,10 @@ function scMountSteps(box,d,opts){
   calculationToggle.open=!!state.calculationControlsOpen;
   calculationToggle.addEventListener('toggle',function(){if(calculationToggle.isConnected)state.calculationControlsOpen=calculationToggle.open;});
 
-  var scoreMode=document.createElement('label');scoreMode.style.cssText='display:block;margin:8px 0';scoreMode.innerHTML='점수 보기 <select class="integrated-score-mode"><option value="original">기존 점수</option><option value="integrated">검사 당시 통합 점수</option></select><span class="auxiliary-model-status muted" style="margin-left:10px"></span>';bar.prepend(scoreMode);
-  var modeSelect=scoreMode.querySelector('select');modeSelect.value=INTEGRATED_SCORE_MODE;modeSelect.onchange=function(){INTEGRATED_SCORE_MODE=modeSelect.value;drawScatter(box,d,opts);};
+  var auxStatus=document.createElement('span');auxStatus.className='auxiliary-model-status muted';bar.prepend(auxStatus);
   var missingAux={};(source.points||[]).forEach(function(p){['step_time','cylinder'].forEach(function(k){var c=(p.score_components||{})[k];if(!c||!c.available||!componentHasRatio(c)){if(!missingAux[k])missingAux[k]=new Set();missingAux[k].add(c&&c.reason||'보조 점수 없음');}});});
   Object.keys(missingAux).forEach(function(k){missingAux[k]=Array.from(missingAux[k]).join(' / ');});
-  var auxStatus=scoreMode.querySelector('.auxiliary-model-status');auxStatus.textContent=auxiliaryMissingText(missingAux);auxStatus.title=auxiliaryMissingDetail(missingAux);
+  auxStatus.textContent=auxiliaryMissingText(missingAux);auxStatus.title=auxiliaryMissingDetail(missingAux);
   var status=bar.querySelector('.step-status'), options=bar.querySelector('.step-options'), sensorOptions=bar.querySelector('.calc-options');
   var appliedDraft=null;
   function draftKey(){return JSON.stringify([Array.from(options.querySelectorAll('input:checked')).map(function(c){return c.value;}),Array.from(sensorOptions.querySelectorAll('input:checked')).map(function(c){return c.value;})]);}
@@ -3235,7 +3233,7 @@ function scMountSteps(box,d,opts){
 function mountTrendToggle(host,key){
   var heading=host.querySelector('h3');if(!heading||heading.querySelector('.trend-toggle'))return;
   if(!document.getElementById('trend-toggle-style')){var style=document.createElement('style');style.id='trend-toggle-style';style.textContent='.trend-collapsed > :not(h3){display:none!important}';document.head.appendChild(style);}
-  var intro=Array.from(host.children).find(function(el){return el.classList.contains('muted')&&el.textContent.length>80;})||host.querySelector('.chamber-mean-content > .muted');
+  var intro=Array.from(host.children).find(function(el){return el.classList.contains('muted')&&el.textContent.length>80;});
   if(intro){var help=document.createElement('details');help.className='trend-help';var summary=document.createElement('summary');summary.textContent='계산 기준 안내';help.appendChild(summary);intro.before(help);help.appendChild(intro);}
   var trendBox=host.closest('#trendAnalysisCharts');if(trendBox)key=trendStateKey(key,trendBox._trendSensorGroup);
   var collapsed=SC_SENSOR_VIEW_STATE.collapsedTrends||(SC_SENSOR_VIEW_STATE.collapsedTrends={});
@@ -3244,8 +3242,28 @@ function mountTrendToggle(host,key){
   button.onclick=function(){collapsed[key]=!collapsed[key];update();};heading.appendChild(button);update();
 }
 
+// Keep the original SVG coordinates for points and range selection; only the Y axis moves.
+function scatterFixedYAxis(grid,title,width,height){
+  var labels=grid.match(/<text\b[^>]*>[\s\S]*?<\/text>/g)||[];
+  return {grid:grid.replace(/<text\b[^>]*>[\s\S]*?<\/text>/g,''),
+    axis:'<g class="sc-fixed-y-axis" role="img" aria-label="이상점수 Y축"><rect width="'+width+'" height="'+height+'" fill="var(--chart-bg)"/>'+labels.join('')+title+'</g>'};
+}
+function pinScatterYAxis(scroll){
+  if(!scroll)return;
+  var svg=scroll.querySelector('svg'),axis=svg&&svg.querySelector('.sc-fixed-y-axis');
+  if(!axis)return;
+  // Above point/selection layers, including the drag controls added after rendering.
+  svg.appendChild(axis);
+  function update(){
+    var width=svg.getBoundingClientRect().width;
+    var offset=width>0?scroll.scrollLeft*svg.viewBox.baseVal.width/width:0;
+    axis.setAttribute('transform','translate('+offset+' 0)');
+  }
+  scroll.addEventListener('scroll',update,{passive:true});update();
+}
+
 function mountSensorScatter(box,pts,geom){
-  if(box.id!=='drillTrendChart') return;
+  if(box.id!=='drillTrendChart'&&!(box._modelChart&&box._scoreMode==='integrated'))return;
   var host=document.createElement('div'); host.className='sensor-scatter-parts';box.appendChild(host);
   var controller=new AbortController();box._sensorAbort=controller;
   if(window.SEMES_EXPORT_FEATURES&&!window.SEMES_EXPORT_FEATURES.scores)return;
@@ -3269,22 +3287,23 @@ function mountSensorScatter(box,pts,geom){
       var series=selected[group].map(function(name){
         return {name:name,values:pts.map(function(p){var row=scores[p.wafer_id];var v=row&&row[name];return typeof v==='number'&&isFinite(v)?v:null;})};
       });
-      var max=2;series.forEach(function(line){line.values.forEach(function(v){if(v!=null)max=Math.max(max,Math.ceil(v));});});
-      if(isFinite(axisMax[group])&&axisMax[group]>0)max=axisMax[group];
+      var max=3; // Score axes always show 0–3; retain original values in tooltips.
       part.ymax.placeholder=String(max);
       var H=geom.H,top=26,bottom=38,height=H-top-bottom;
       function y(v){return top+height*(1-v/max);}
       var svg='';for(var k=0;k<=4;k++){var v=max*k/4,yy=y(v);svg+='<line x1="50" x2="'+(geom.W-20)+'" y1="'+yy+'" y2="'+yy+'" stroke="#e2e8f0"/><text x="44" y="'+(yy+4)+'" text-anchor="end" font-size="13" fill="#64748b">'+Number(v.toPrecision(4))+'</text>';}
+      var fixedY=scatterFixedYAxis(svg,'<text x="10" y="'+(top+height/2)+'" fill="#64748b" font-size="11.5" text-anchor="middle" transform="rotate(-90 10 '+(top+height/2)+')">이상 점수</text>',50,H-bottom+10);
+      svg=fixedY.grid;
       var legend=[];
       series.forEach(function(line){
         var count=0;line.values.forEach(function(v,i){if(v==null)return;count++;var p=pts[i],dim=p.lot_first&&!dispFirstOn();svg+=sensorChamberMarker(p.chamber,geom.xs[i],y(Math.max(0,Math.min(v,max))),4.2,'class="sensor-score-point" opacity="'+(dim?0.25:1)+'" fill="'+colors[line.name]+'" stroke="'+(v>max?'#0f172a':'none')+'" stroke-width="2"',String(p.chamber||'미상').toUpperCase()+' · '+line.name+'\n'+p.wafer_id+'\n'+String(p.ts||'')+'\n센서 이상점수: '+v.toFixed(4)+(p.lot_first?(dim?' · LOT 첫 장(산포 계산 제외)':' · LOT 첫 장'):'')+(v>max?' (Y축 최대값 초과)':''));});
         legend.push('<span style="color:'+colors[line.name]+';white-space:nowrap">● '+esc(line.name)+' ('+count+'/'+pts.length+'매)</span>');
       });
-      svg+=geom.xlab;
+      svg+=geom.xlab+fixedY.axis;
       part.rows.innerHTML=sensorChamberLegend(pts)+(geom.compact?'':'<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;margin:4px 0">'+legend.join('')+'</div>')
         +'<div class="sc-scroll" style="border:1px solid var(--line-soft);border-radius:14px;background:var(--chart-bg);padding:8px 6px;box-shadow:0 1px 3px rgba(30,41,59,.04);overflow-x:auto">'
         +'<svg viewBox="0 0 '+geom.W+' '+H+'" style="'+(geom.needScroll?'width:'+geom.W+'px;min-width:'+geom.W+'px':'width:100%')+';height:auto;display:block">'+svg+'</svg></div>';
-      var sc=part.rows.querySelector('.sc-scroll');sc.scrollLeft=box.querySelector('.sc-scroll').scrollLeft;scrollSync(sc);
+      var sc=part.rows.querySelector('.sc-scroll');sc.scrollLeft=box.querySelector('.sc-scroll').scrollLeft;pinScatterYAxis(sc);scrollSync(sc);
     });
   }
   async function loadScores(){
@@ -3323,20 +3342,14 @@ function mountSensorScatter(box,pts,geom){
       try{var saved=data._sensorSelection||{};['temperature','pressure'].forEach(function(g){selected[g]=Array.isArray(saved[g])?names.filter(function(n){return saved[g].indexOf(n)>=0&&scSensorGroup(n)===g;}):[];});}catch(e){}
       ['temperature','pressure'].forEach(function(g){
         var part=document.createElement('section');part.style.cssText='margin-top:8px;border-top:1px solid #dbe4ef;padding-top:6px';
-        part.innerHTML='<h3 style="font-size:14px;margin:4px 0">'+(g==='temperature'?'온도 센서':'압력 센서')+' 이상점수</h3><div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;font-size:12px;color:var(--txt-dim)"><label style="display:flex;gap:5px;align-items:center;white-space:nowrap">Y최대 <input class="sensor-ymax" type="number" min="0" step="any" placeholder="자동" style="width:60px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px"></label><button type="button" class="btn soft sensor-yauto" style="font-size:11.5px;padding:3px 8px">자동</button></div><div class="sensor-options" style="display:flex;gap:8px;flex-wrap:wrap"></div><div class="sensor-rows"></div>';host.appendChild(part);mountTrendToggle(part,'scores-'+g);
+        part.innerHTML='<h3 style="font-size:14px;margin:4px 0">'+(g==='temperature'?'온도 센서':'압력 센서')+' 이상점수</h3><div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;font-size:12px;color:var(--txt-dim)"><label style="display:flex;gap:5px;align-items:center;white-space:nowrap">Y최대 <input class="sensor-ymax" type="number" value="3" disabled title="Y축 0~3 고정 · 3 초과 점수는 3에 표시" style="width:60px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px"></label><button type="button" class="btn soft sensor-yauto" disabled style="font-size:11.5px;padding:3px 8px">자동</button></div><div class="sensor-options" style="display:flex;gap:8px;flex-wrap:wrap"></div><div class="sensor-rows"></div>';host.appendChild(part);mountTrendToggle(part,'scores-'+g);
         var toolbar=part.querySelector('.sensor-ymax').parentNode.parentNode;
         var scaleLabel=document.createElement('label');scaleLabel.style.cssText='display:flex;gap:5px;align-items:center;white-space:nowrap';scaleLabel.textContent='가로축 ';
         var mainScale=box.querySelector('.sc-scale'), sensorScale=mainScale.cloneNode(true);sensorScale.className='sensor-scale';sensorScale.value=mainScale.value;scaleLabel.appendChild(sensorScale);toolbar.insertBefore(scaleLabel,toolbar.firstChild);
         sensorScale.addEventListener('change',function(){mainScale.value=sensorScale.value;mainScale.dispatchEvent(new Event('change'));});
         var yin=part.querySelector('.sensor-ymax');
-        yin.value=axisMax[g]>0?axisMax[g]:'';
+        yin.value='3';
         groups[g]={rows:part.querySelector('.sensor-rows'),ymax:yin};var options=part.querySelector('.sensor-options');
-        yin.addEventListener('change',function(){
-          var value=Number(yin.value);
-          axisMax[g]=isFinite(value)&&value>0?value:null;
-          yin.value=axisMax[g]||'';renderRows();
-        });
-        part.querySelector('.sensor-yauto').addEventListener('click',function(){axisMax[g]=null;yin.value='';renderRows();});
         names.filter(function(n){return scSensorGroup(n)===g;}).forEach(function(n){var label=document.createElement('label');label.style.cssText='display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border:1px solid var(--line);border-radius:6px;font-size:12px;cursor:pointer;color:'+colors[n];var cb=document.createElement('input');cb.type='checkbox';cb.checked=selected[g].indexOf(n)>=0;cb.onchange=function(){selected[g]=names.filter(function(n2){return scSensorGroup(n2)===g&&(n2===n?cb.checked:selected[g].indexOf(n2)>=0);});persist();renderRows();if(selected.temperature.length||selected.pressure.length)loadScores();};label.appendChild(cb);label.appendChild(document.createTextNode(' '+n));options.appendChild(label);});
         if(!options.children.length)options.textContent='사용 가능한 센서가 없습니다.';
       });
@@ -3823,197 +3836,6 @@ async function fetchTrendBatch(source,model,kind,batch,signal,pairs){
   try{return await entry.promise;}finally{if(pending.get(key)===entry)pending.delete(key);}
 }
 
-// Pure calculation: wafer means -> chamber means, compared only within recipe/step/sensor.
-function chamberMeanPhaseName(phase){return {zero_start:'스텝 0번',zero_end:'스텝 00번',supply:'가압',pressurize:'가압',wait:'대기',process:'공정',discharge:'배출'}[phase]||phase;}
-function chamberMeanDifferences(points,rows,options){
-  var groups=new Map(),seen=new Set(),missing=0,phaseMissing=0;
-  points.forEach(function(p){
-    var key=String(p.ts||'').slice(0,10)+'/'+p.wafer_id;
-    if(seen.has(key))return;seen.add(key);
-    var recipe=p.mean_recipe||p.recipe,chamber=p.chamber,row=rows[key],valid=false;
-    if(!recipe||!chamber){missing++;return;}
-    var phaseMode=options.stepMode==='pressurize'?'supply':options.stepMode;
-    var isPhase=['supply','wait','process','discharge'].indexOf(phaseMode)>=0;
-    var phase=row&&row.valve_phases,phaseSteps=isPhase&&phase&&phase.status==='ok'&&phase.version===2?phase.steps[phaseMode]:null;
-    if(isPhase&&(!phaseSteps||!phaseSteps.length)){missing++;phaseMissing++;return;}
-    var stepFrom=isPhase?null:options.stepFrom,stepTo=isPhase?null:options.stepTo;
-    ((row&&row.sensor_series)||[]).forEach(function(sensor){
-      var name=String(sensor.sensor||''),type=/^p/i.test(name)?'pressure':/^t/i.test(name)?'temperature':null;
-      if(!type||/sv$/i.test(name))return;
-      var table=sensor.export_step_stats||sensor.step_stats||{};
-      var values=Object.keys(table).filter(function(step){
-        var value=table[step]&&table[step].mean;
-        return Number.isInteger(Number(step))&&Number(step)>0&&typeof value==='number'&&isFinite(value)
-          &&(stepFrom==null||Number(step)>=stepFrom)&&(stepTo==null||Number(step)<=stepTo)
-          &&(!isPhase||phaseSteps.indexOf(Number(step))>=0);
-      }).map(function(step){return {step:Number(step),value:table[step].mean};});
-      if(isPhase){
-        if(values.length!==phaseSteps.length)return;
-        values=[{step:chamberMeanPhaseName(phaseMode),value:values.reduce(function(sum,v){return sum+v.value;},0)/values.length}];
-      }else if(stepFrom!=null&&stepTo!=null){
-        // Compare identical ranges: do not mix a complete range with a partial wafer.
-        if(values.length!==stepTo-stepFrom+1)return;
-        values=[{step:stepFrom+'~'+stepTo,value:values.reduce(function(sum,v){return sum+v.value;},0)/values.length}];
-      }
-      values.forEach(function(item){
-        valid=true;var groupKey=JSON.stringify([recipe,item.step,name]);
-        if(!groups.has(groupKey))groups.set(groupKey,{recipe:recipe,step:item.step,sensor:name,type:type,chambers:new Map()});
-        var group=groups.get(groupKey),entry=group.chambers.get(chamber)||{sum:0,count:0};
-        entry.sum+=item.value;entry.count++;group.chambers.set(chamber,entry);
-      });
-    });
-    if(!valid)missing++;
-  });
-  var found=[],compared=0,insufficient=0,zeroReference=0;
-  groups.forEach(function(group){
-    var chamberMeans=[];group.chambers.forEach(function(v,ch){chamberMeans.push({chamber:ch,mean:v.sum/v.count,count:v.count,eligible:v.count>=options.minimum});});
-    chamberMeans.sort(function(a,b){return String(a.chamber).localeCompare(String(b.chamber));});
-    var chambers=chamberMeans.filter(function(v){if(!v.eligible)insufficient++;return v.eligible;});
-    if(chambers.length<2){insufficient+=chambers.length;return;}
-    chambers.forEach(function(ch){
-      var others=chambers.filter(function(v){return v!==ch;}).map(function(v){return v.mean;}).sort(function(a,b){return a-b;});
-      var middle=Math.floor(others.length/2),reference=others.length%2?others[middle]:(others[middle-1]+others[middle])/2;
-      var delta=ch.mean-reference,absolute=Math.abs(delta),percent=Math.abs(reference)>1e-12?absolute/Math.abs(reference)*100:null;
-      if(options.mode==='percent'&&percent===null){zeroReference++;return;}
-      compared++;var value=options.mode==='percent'?percent:absolute,threshold=Number(options[group.type]);
-      if(absolute>0&&value>=threshold)found.push({recipe:group.recipe,step:group.step,sensor:group.sensor,type:group.type,chamber:ch.chamber,mean:ch.mean,count:ch.count,reference:reference,delta:delta,percent:percent,value:value,threshold:threshold,peers:others.length,chamberMeans:chamberMeans});
-    });
-  });
-  found.sort(function(a,b){return (b.value/b.threshold)-(a.value/a.threshold)||a.step-b.step||a.sensor.localeCompare(b.sensor);});
-  return {stepMode:options.stepMode,found:found,compared:compared,insufficient:insufficient,zeroReference:zeroReference,missing:missing,phaseMissing:phaseMissing,wafers:seen.size,stepFrom:options.stepFrom==null?null:options.stepFrom,stepTo:options.stepTo==null?null:options.stepTo};
-}
-
-// Rank comparable recipe/sensor/step groups by separation relative to within-chamber variation.
-function chamberMeanAuto(points,rows,selection){
-  selection=selection||{};
-  var groups=new Map(),seen=new Set(),phaseMissing=0;
-  points.forEach(function(p){
-    var key=String(p.ts||'').slice(0,10)+'/'+p.wafer_id,recipe=p.mean_recipe||p.recipe,row=rows[key],ts=Date.parse(p.ts);
-    if(seen.has(key)||!recipe||!p.chamber||!row||!isFinite(ts))return;seen.add(key);
-    var phase=row.valve_phases,phases=phase&&phase.version===2&&phase.status==='ok'?phase.steps:null;if(!phases){phaseMissing++;}
-    (row.sensor_series||[]).forEach(function(sensor){
-      var name=String(sensor.sensor||'');if((selection.sensorGroup&&!trendSensorMatches(name,selection.sensorGroup))||(Array.isArray(selection.sensors)&&selection.sensors.indexOf(name)<0))return;
-      var table=sensor.export_step_stats||sensor.step_stats||{};
-      function add(part,label,value){
-        var k=JSON.stringify([recipe,name,part]);
-        if(!groups.has(k))groups.set(k,{recipe:recipe,sensor:name,part:part,label:label,chambers:new Map()});
-        var group=groups.get(k),ch=group.chambers.get(p.chamber);
-        if(!ch){ch={chamber:p.chamber,mean:0,m2:0,points:[]};group.chambers.set(p.chamber,ch);}
-        ch.points.push({ts:ts,value:value,wafer:p.wafer_id});var n=ch.points.length,delta=value-ch.mean;ch.mean+=delta/n;ch.m2+=delta*(value-ch.mean);
-      }
-      ['zero_start','zero_end'].forEach(function(part){if(Array.isArray(selection.phases)&&selection.phases.indexOf(part)<0)return;var value=table[part]&&table[part].mean;if(typeof value==='number'&&isFinite(value))add('phase:'+part,chamberMeanPhaseName(part),value);});
-      if(phases)['supply','wait','process','discharge'].forEach(function(part){if(Array.isArray(selection.phases)&&selection.phases.indexOf(part)<0)return;var steps=phases[part]||[];if(!steps.length)return;var values=steps.map(function(st){return table[st]&&table[st].mean;});if(values.every(function(v){return typeof v==='number'&&isFinite(v);}))add('phase:'+part,chamberMeanPhaseName(part),values.reduce(function(a,b){return a+b;},0)/values.length);});
-    });
-  });
-  var ranked=[],insufficient=0,compared=0;
-  groups.forEach(function(group){
-    var chambers=Array.from(group.chambers.values()).filter(function(ch){return ch.points.length>=3;});
-    if(chambers.length<2){insufficient++;return;}compared++;
-    var pooled=Math.sqrt(chambers.reduce(function(sum,ch){return sum+ch.m2;},0)/chambers.reduce(function(sum,ch){return sum+ch.points.length-1;},0));
-    var magnitude=Math.max.apply(null,chambers.map(function(ch){return Math.abs(ch.mean);}));
-    var scale=Math.max(pooled,magnitude*1e-6,1e-9),best=null;
-    chambers.forEach(function(ch){var peers=chambers.filter(function(v){return v!==ch;}).map(function(v){return v.mean;}).sort(function(a,b){return a-b;});var mid=Math.floor(peers.length/2),reference=peers.length%2?peers[mid]:(peers[mid-1]+peers[mid])/2,delta=ch.mean-reference;
-      if(Math.abs(delta)<=Math.max(magnitude*1e-12,1e-12))return;
-      var score=Math.abs(delta)/scale;if(!best||score>best.score)best={chamber:ch.chamber,mean:ch.mean,reference:reference,delta:delta,score:score};
-    });
-    if(best){chambers.forEach(function(ch){ch.points.sort(function(a,b){return a.ts-b.ts;});});ranked.push(Object.assign(best,{recipe:group.recipe,sensor:group.sensor,part:group.part,label:group.label,chambers:chambers,pooled:pooled}));}
-  });
-  ranked.sort(function(a,b){return b.score-a.score||a.recipe.localeCompare(b.recipe)||a.sensor.localeCompare(b.sensor)||a.part.localeCompare(b.part);});
-  return {ranked:ranked.slice(0,5),compared:compared,insufficient:insufficient,phaseMissing:phaseMissing,wafers:seen.size};
-}
-
-function renderChamberMeanAutoPlot(target,item,scale){
-  var colors=['#2563eb','#dc2626','#059669','#9333ea','#ea580c','#0891b2'];
-  var all=[];item.chambers.forEach(function(ch){ch.points.forEach(function(p){all.push(p);});});
-  var xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity;all.forEach(function(p){xmin=Math.min(xmin,p.ts);xmax=Math.max(xmax,p.ts);ymin=Math.min(ymin,p.value);ymax=Math.max(ymax,p.value);});
-  if(xmin===xmax){xmin-=30000;xmax+=30000;}var pad=(ymax-ymin)*.1||Math.max(Math.abs(ymax)*.05,1);ymin-=pad;ymax+=pad;
-  scale=scale||{};if(scale.min!=null)ymin=scale.min;if(scale.max!=null)ymax=scale.max;if(ymax<=ymin){if(scale.max==null)ymax=ymin+1;else ymin=ymax-1;}
-  var W=1000,H=310,L=90,R=25,T=20,B=65;
-  function x(v){return L+(v-xmin)/(xmax-xmin)*(W-L-R);}function y(v){return H-B-(v-ymin)/(ymax-ymin)*(H-T-B);}
-  function num(v){return Number(v.toPrecision(6)).toString();}
-  function stamp(v){var d=new Date(v),z=function(n){return String(n).padStart(2,'0');};return (d.getMonth()+1)+'/'+d.getDate()+' '+z(d.getHours())+':'+z(d.getMinutes());}
-  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;min-width:650px;display:block" role="img" aria-label="'+esc(item.sensor+' '+item.label+' 챔버별 센서 평균값 추이')+'">';
-  for(var i=0;i<=4;i++){var v=ymin+(ymax-ymin)*i/4,yy=y(v);svg+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+yy+'" y2="'+yy+'" stroke="#e2e8f0"/><text x="'+(L-8)+'" y="'+(yy+4)+'" text-anchor="end" font-size="12">'+esc(num(v))+'</text>';var t=xmin+(xmax-xmin)*i/4;svg+='<text x="'+x(t)+'" y="'+(H-B+22)+'" text-anchor="middle" font-size="12">'+stamp(t)+'</text>';}
-  item.chambers.sort(function(a,b){return String(a.chamber).localeCompare(String(b.chamber));});
-  var legend=[];item.chambers.forEach(function(ch,i){var match=String(ch.chamber).match(/dsv([1-6])/i),color=colors[match?Number(match[1])-1:i%colors.length];legend.push('<span style="color:'+color+'">● '+esc(String(ch.chamber).toUpperCase())+' · 평균 '+esc(num(ch.mean))+' · '+ch.points.length+'매</span>');
-    svg+='<polyline fill="none" stroke="'+color+'" stroke-opacity="0.4" stroke-width="1.5" points="'+ch.points.map(function(p){return x(p.ts)+','+y(p.value);}).join(' ')+'"/>';
-    ch.points.forEach(function(p){svg+='<circle cx="'+x(p.ts)+'" cy="'+y(p.value)+'" r="4" fill="'+color+'"><title>'+esc(ch.chamber+' · '+p.wafer+' · '+new Date(p.ts).toLocaleString()+' · 평균 '+num(p.value))+'</title></circle>';});
-  });
-  svg+='<text x="'+(W/2)+'" y="'+(H-8)+'" text-anchor="middle" font-size="12">웨이퍼 종료시각 · Y축: 센서 실측 평균값</text></svg>';
-  target.innerHTML='<h4 style="margin:10px 0">'+esc(item.recipe+' · '+item.label+' · '+item.sensor)+'</h4><div>'+esc(String(item.chamber).toUpperCase())+' 평균 '+num(item.mean)+' · 다른 챔버 평균의 중앙값 '+num(item.reference)+' · 차이 '+num(item.delta)+' · 상대 차이 지수 '+num(item.score)+'</div><div style="display:flex;gap:14px;flex-wrap:wrap;margin:8px 0">'+legend.join('')+'</div><div style="overflow-x:auto">'+svg+'</div>';
-}
-
-function mountChamberMeanDetection(box,pts){
-  if(box.id!=='trendAnalysisCharts'||(window.SEMES_EXPORT_FEATURES&&!window.SEMES_EXPORT_FEATURES.chamber_means))return;
-  var source=box._data._stepSource||box._data,controller=box._sensorAbort;
-  var cache=source._pvProcessDifferenceRows||(source._pvProcessDifferenceRows={});
-  var sensorGroup=box._trendSensorGroup||'tp',stateKey=trendStateKey('chamberMeanDetection',sensorGroup),resultKey=trendStateKey('_chamberMeanResult',sensorGroup);
-  var settings=SC_SENSOR_VIEW_STATE[stateKey]||(SC_SENSOR_VIEW_STATE[stateKey]={sensors:[]});
-  var host=document.createElement('section');host.className='chamber-mean-detection';host.style.cssText='margin-top:12px;border-top:1px solid #dbe4ef;padding-top:8px';
-  host.innerHTML='<h3 style="font-size:14px;margin:4px 0">챔버별 스텝 평균 차이 감지</h3>'
-    +'<button type="button" class="btn primary chamber-mean-load">조회</button><div class="chamber-mean-content" style="display:none">'
-    +'<div class="muted" style="font-size:12px">조회기간의 스텝 0번·가압·대기·공정·배출·스텝 00번 구간을 자동 비교합니다. 같은 레시피·센서에서 챔버당 3매 이상, 2개 이상 챔버가 있는 항목만 비교합니다. 밸브 구간은 원본 샘플 불일치 최대 3개 허용 기준을 유지합니다. 실측 평균 차이를 챔버 내부 산포로 나눈 상대 차이 순위이며, 고장 확정 판정은 아닙니다. 두 챔버만 있으면 어느 쪽이 비정상인지는 구분할 수 없습니다.</div>'
-    +'<div class="trend-period-controls" data-option-group="표시 기간" role="group" aria-label="표시 기간" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;font-size:12px">표시 기간 <input class="chamber-mean-from" aria-label="챔버 평균 차이 시작시각" type="datetime-local" step="1"> ~ <input class="chamber-mean-to" aria-label="챔버 평균 차이 종료시각" type="datetime-local" step="1"><button class="btn primary chamber-mean-run">조회 및 자동 감지</button><button class="btn soft chamber-mean-reset">전체 기간</button></div>'
-    +'<fieldset class="chamber-mean-filters" style="border:1px solid #dbe4ef;border-radius:8px;margin-top:10px"><legend>비교 항목 선택 · 센서 기본 미선택</legend><div class="chamber-mean-sensors"></div><div class="chamber-mean-phases" style="margin-top:8px"></div><div class="muted">여러 항목 선택 후 조회 및 자동 감지를 누르세요.</div></fieldset>'
-    +'<div class="chamber-mean-status muted" role="status" style="margin:8px 0">조회하면 차이가 가장 큰 항목의 값 추이를 자동으로 표시합니다.</div><div class="chamber-mean-results"></div></div>';
-  box.appendChild(host);mountTrendToggle(host,'chamber-mean');
-  var from=trendDateTimeInput(host.querySelector('.chamber-mean-from'),false),to=trendDateTimeInput(host.querySelector('.chamber-mean-to'),true),status=host.querySelector('.chamber-mean-status'),results=host.querySelector('.chamber-mean-results');
-  from.value=settings.from||'';to.value=settings.to||'';
-  var loadButton=host.querySelector('.chamber-mean-load'),content=host.querySelector('.chamber-mean-content');
-  function reveal(){loadButton.style.display='none';content.style.display='';}
-  var filters=host.querySelector('.chamber-mean-filters');
-  function filterKey(){return JSON.stringify([settings.sensors||null,settings.phases||null]);}
-  function renderFilters(){
-    var sensors=new Set();pts.forEach(function(p){var row=cache[String(p.ts||'').slice(0,10)+'/'+p.wafer_id];((row&&row.sensor_series)||[]).forEach(function(s){var name=String(s.sensor||'');if(trendSensorMatches(name,sensorGroup))sensors.add(name);});});
-    function group(selector,key,title,values,label){
-      var node=host.querySelector(selector);markTrendOptionGroup(node,title+' 선택');node.innerHTML='';var head=document.createElement('b');head.textContent=title+' ';node.appendChild(head);
-      function changed(){source[resultKey]=null;results.textContent='';status.textContent='선택 변경됨 · 조회 및 자동 감지를 누르세요.';renderFilters();}
-      ['전체 선택','전체 선택 해제'].forEach(function(text,i){var b=document.createElement('button');b.type='button';b.className='btn soft';b.textContent=text;b.onclick=function(){settings[key]=i?[]:null;changed();};node.appendChild(b);});
-      values.forEach(function(value){var l=document.createElement('label');l.style.cssText='display:inline-flex;gap:4px;margin:6px;align-items:center';var cb=document.createElement('input');cb.type='checkbox';cb.value=value;cb.checked=!Array.isArray(settings[key])||settings[key].indexOf(value)>=0;cb.onchange=function(){var selected=Array.isArray(settings[key])?settings[key].slice():values.slice();settings[key]=cb.checked?Array.from(new Set(selected.concat([value]))):selected.filter(function(v){return v!==value;});changed();};l.appendChild(cb);l.appendChild(document.createTextNode(label(value)));node.appendChild(l);});
-      if(!values.length)node.appendChild(document.createTextNode(' 조회 후 센서 목록이 표시됩니다. 기본: 센서 미선택'));
-    }
-    group('.chamber-mean-sensors','sensors','센서',Array.from(sensors),function(v){return v;});
-    groupTrendSensorControls(host.querySelector('.chamber-mean-sensors'));
-    group('.chamber-mean-phases','phases','공정 구간',['zero_start','supply','wait','process','discharge','zero_end'],chamberMeanPhaseName);
-  }
-  renderFilters();
-  function live(){return !controller.signal.aborted&&host.isConnected;}
-  function display(result){
-    status.textContent='대상 '+result.wafers+'매 · 비교 항목 '+result.compared+'개 · 표본 부족 '+result.insufficient+'개 · 밸브 구간 미확인 '+result.phaseMissing+'매 (밸브 구간 비교 제외)'+trendScopeNotice(pts.map(function(p){return cache[String(p.ts||'').slice(0,10)+'/'+p.wafer_id];}));
-    if(!result.ranked.length){results.textContent=result.compared?'비교 가능한 항목에서 챔버 평균 차이가 없습니다.':'비교 자료가 부족합니다. 동일 레시피·센서·공정 구간에서 챔버당 3매 이상, 2개 챔버 이상이 필요합니다. HTML 내보내기에는 평균 통계가 포함되어야 합니다.';return;}
-    results.innerHTML='<div class="chamber-auto-ranks" style="display:flex;gap:6px;flex-wrap:wrap"></div><div class="chamber-auto-plot"></div>';
-    var buttons=results.querySelector('.chamber-auto-ranks'),plot=results.querySelector('.chamber-auto-plot');
-    var commonBar=mountTrendCommonScale(results,settings.commonScale,function(value){settings.commonScale=value;var current=buttons.querySelector('[aria-pressed="true"]');if(current)current.click();});results.insertBefore(commonBar,buttons);
-    result.ranked.forEach(function(item,i){var b=document.createElement('button');b.className='btn soft';b.textContent=(i+1)+'위 · '+item.recipe+' · '+item.label+' · '+item.sensor;b.onclick=function(){buttons.querySelectorAll('button').forEach(function(el){el.className='btn soft';el.setAttribute('aria-pressed','false');});b.className='btn primary';b.setAttribute('aria-pressed','true');renderChamberMeanAutoPlot(plot,item,settings.commonScale);};buttons.appendChild(b);if(i===0)b.click();});
-  }
-  var pointKey=JSON.stringify(pts.map(function(p){return [p.ts,p.wafer_id,p.chamber,p.mean_recipe||p.recipe];}));
-  var saved=source[resultKey];
-  if(saved&&saved.autoVersion===1&&saved.pointKey===pointKey&&saved.filterKey===filterKey()){from.value=saved.from;to.value=saved.to;reveal();display(saved.result);}
-  var runButton=host.querySelector('.chamber-mean-run'),resetButton=host.querySelector('.chamber-mean-reset');
-  loadButton.onclick=function(){reveal();runButton.click();};
-  resetButton.onclick=function(){from.value='';to.value='';runButton.click();};
-  runButton.onclick=async function(){
-    var selectedFrom=from.value,selectedTo=to.value,start=selectedFrom?Date.parse(selectedFrom):-Infinity,end=selectedTo?Date.parse(selectedTo):Infinity;
-    if(!from.validity.valid||!to.validity.valid||(selectedFrom&&!isFinite(start))||(selectedTo&&!isFinite(end))||start>end){status.textContent='조회 시작·종료시각을 확인하세요.';return;}
-    var selection={sensorGroup:sensorGroup,sensors:Array.isArray(settings.sensors)?settings.sensors.slice():null,phases:Array.isArray(settings.phases)?settings.phases.slice():null},selectionKey=filterKey();
-    settings.from=selectedFrom;settings.to=selectedTo;
-    var view=pts.filter(function(w){var time=Date.parse(w.ts);return isFinite(time)&&time>=start&&time<=end;});
-    runButton.disabled=resetButton.disabled=filters.disabled=true;results.textContent='';source[resultKey]=null;
-    try{
-      var pending=view.filter(function(w){var row=cache[String(w.ts||'').slice(0,10)+'/'+w.wafer_id];return !row||!row.valve_phases||row.valve_phases.version!==2;});
-      for(var i=0;i<pending.length;i+=64){
-        status.textContent='평균 자료 조회 중 '+i+' / '+pending.length+'매';
-        var batch=pending.slice(i,i+64).map(function(w){return {date:String(w.ts).slice(0,10),wid:w.wafer_id};});
-        var data=await fetchTrendBatch(source,box._data.model_id,'differences',batch,controller.signal);
-        if(!live())return;(data.wafers||[]).forEach(function(row){mergeTrendRow(cache,row.date+'/'+row.wid,row);});
-      }
-      if(!live())return;status.textContent='가압·대기·공정·배출 자동 비교 중…';await new Promise(function(resolve){setTimeout(resolve,0);});if(!live())return;
-      renderFilters();if((Array.isArray(selection.sensors)&&!selection.sensors.length)||(Array.isArray(selection.phases)&&!selection.phases.length)){status.textContent='센서와 공정 구간을 각각 하나 이상 선택하세요.';return;}var result=chamberMeanAuto(view,cache,selection);
-      source[resultKey]={autoVersion:1,filterKey:selectionKey,pointKey:pointKey,from:selectedFrom,to:selectedTo,result:result};display(result);
-    }catch(e){if(live())status.textContent='조회 실패: '+e.message;}finally{runButton.disabled=resetButton.disabled=filters.disabled=false;}
-  };
-}
-
 // Match the existing server filename convention: '*' takes priority over '_'.
 function sensorTrendEquipment(point){
   var explicit=point.tool||point.tool_prefix||point.equipment;
@@ -4393,7 +4215,6 @@ function syncTrendAnalysis(scatter,pts,geom){
   mountStepTimeTrend(host,pts);
   mountSensorDifferences(host,pts,geom);
   mountSensorDifferences(host,pts,geom,'equipment');
-  mountChamberMeanDetection(host,pts);
   if(restore){
     [false,'equipment'].forEach(function(individual){
       if(!(individual==='equipment'?restore.equipment:restore.differences))return;
@@ -4637,7 +4458,7 @@ function detectSelectedMeanSensors(rows,phaseKey){
   names.forEach(function(name){var all=rows.map(function(r){return curationSupplyValues(r,name,'',phaseKey).temperature;}),values=all.filter(function(v){return v!==null;});if(values.length<5||values.length<rows.length*.8){insufficient++;return;}tested++;testedSensors.push(name);
     var mean=values.reduce(function(s,v){return s+v/values.length;},0),sd=Math.sqrt(values.reduce(function(s,v){return s+Math.pow(v-mean,2)/values.length;},0)),cutoff=Math.max(sd*3,Math.abs(mean)*.01,1e-9),outliers=all.map(function(v,i){return {index:i,value:v};}).filter(function(v){return v.value!==null&&Math.abs(v.value-mean)>cutoff;});if(!outliers.length)return;
     var high=outliers.filter(function(v){return v.value>mean;}).length,low=outliers.length-high;
-    found.push({sensor:name,direction:high&&low?'both':high?'high':'low',normalMean:mean,selectedMean:mean,cutoff:cutoff,outliers:outliers,high:high,low:low,strength:outliers.reduce(function(m,v){return Math.max(m,Math.abs(v.value-mean)/cutoff);},0)});
+    found.push({sensor:name,direction:high&&low?'both':high?'high':'low',normalMean:mean,selectedMean:mean,cutoff:cutoff,outliers:outliers,high:high,low:low,strength:outliers.reduce(function(sum,v){return sum+Math.abs(v.value-mean)/cutoff/outliers.length;},0)});
   });found.sort(function(a,b){return b.strength-a.strength||a.sensor.localeCompare(b.sensor);});return {sensors:found,total:names.length,tested:tested,testedSensors:testedSensors,insufficient:insufficient};
 }
 var CURATION_CYLINDER='d_001_PV − d_004_PV';
@@ -4659,7 +4480,7 @@ function curationSensorPriority(item){
   var area=trendSensorArea(item.sensor),phase=item.phase;
   if(phase==='supply')return area===1?0:1;
   if(phase==='discharge')return area===5?0:1;
-  if(phase==='wait'||phase==='process')return area===2||area===3||area===4||/cylinder/i.test(item.sensor)?0:1;
+  if(phase==='wait'||phase==='process')return area===2||area===3||area===4||/cylinder/i.test(item.sensor)||['d_001_PV','d_004_PV','v_011',CURATION_CYLINDER].indexOf(item.sensor)>=0?0:1;
   return 1;
 }
 function curationSensorAreas(sensors,excluded,testedSensors){
@@ -4694,6 +4515,8 @@ function renderCurationSupplyGraph(host,context,values,temperature,pressure,wide
   var enabledCylinderSeries=cylinderSeries.filter(function(series){return !axisState._cylinderSeries||axisState._cylinderSeries.indexOf(series.key)>=0;});
   function cylinderValue(v,series){return v.cylinderValues&&v.cylinderValues[series.key];}
   var metrics=cylinderDifference?['mean']:(axisState._metrics||['mean']);function metricValue(v,f,m){return m==='mean'?v[f]:v[f+(m==='min'?'Min':'Max')];}
+  var reference=context.referenceData;
+  var referenceValues=reference?reference.rows.map(function(row,i){return (dispFirstOn()||!reference.points[i].lot_first)?curationSupplyValues(curationCylinderRow(row),temperature,pressure,reference.phase):null;}).filter(Boolean):[];
   var points=context.points,N=points.length,normal=context.normal.length;
   if(!N){host.textContent='비교할 웨이퍼가 없습니다.';return;}
   var times=points.map(function(p){return Date.parse(p.ts);}),t0=times[0],t1=times[N-1],ordinal=t0===t1;
@@ -4713,6 +4536,7 @@ function renderCurationSupplyGraph(host,context,values,temperature,pressure,wide
   function markerColor(f,metric){var palette=cylinderColors[f==='temperature'?temperature:pressure];return palette?palette[metric]:colors[f];}
   fields.forEach(function(f){var a=values.flatMap(function(v){return f==='seconds'?[v[f]]:metrics.map(function(m){return metricValue(v,f,m);}).concat(cylinderDifference&&f===(temperature?'temperature':'pressure')?enabledCylinderSeries.map(function(series){return cylinderValue(v,series);}):[]);}).filter(function(v){return typeof v==='number'&&isFinite(v);}),lo=0,hi=1;if(a.length){lo=a.reduce(function(a,b){return Math.min(a,b);},Infinity);hi=a.reduce(function(a,b){return Math.max(a,b);},-Infinity);var pad=Math.max((hi-lo)*.1,Math.abs(hi)*.01,.001);lo=f==='seconds'?Math.max(0,lo-pad):lo-pad;hi=hi+pad;}scales[f]={lo:lo,hi:hi,available:a.length};stats[f]=context.lot?curationSupplyStats(values.filter(function(v,i){return context.roles[i]==='normal';}).concat(values.filter(function(v,i){return context.roles[i]==='selected';})),f,normal):curationSupplyStats(values,f,normal);});
   if(context.selectedMean)fields.forEach(function(f){var included=values.filter(function(v,i){return dispFirstOn()||!points[i].lot_first;});stats[f]=curationSupplyStats(included,f,included.length);stats[f].selected=stats[f].normal;});
+  var referenceStats={};fields.forEach(function(f){referenceStats[f]=curationSupplyStats(referenceValues,f,referenceValues.length).normal;var mean=referenceStats[f].mean;if(reference&&mean!==null){var scale=scales[f],pad=Math.max(Math.abs(mean)*.01,.001);scale.lo=Math.min(scale.lo,mean-pad);scale.hi=Math.max(scale.hi,mean+pad);scale.available++;}});
   var specs=[{key:'x',label:'X축 기간',lo:autoX0,hi:autoX1}];
   fields.forEach(function(f){if(f!=='seconds'&&!(f==='temperature'?temperature:pressure))return;specs.push({key:f,label:f==='seconds'?'Y축 소요시간(초)':'Y축 센서값',lo:scales[f].lo,hi:scales[f].hi,floor:f==='seconds'?0:null});var r=curationAxisRange(axisState,f,scales[f].lo,scales[f].hi);scales[f].lo=r.lo;scales[f].hi=r.hi;});
   function y(f,v){var s=scales[f];return T+(1-(v-s.lo)/(s.hi-s.lo))*ih;}
@@ -4748,6 +4572,7 @@ function renderCurationSupplyGraph(host,context,values,temperature,pressure,wide
   }
   svg+='<g class="curation-viewport-marks"></g>';
   fields.forEach(function(f){if(f!=='seconds'&&metrics.indexOf('mean')<0)return;var v=stats[f].normal.mean;if(v!==null)svg+='<line x1="0" x2="'+W+'" y1="'+y(f,v)+'" y2="'+y(f,v)+'" stroke="'+colors[f]+'" stroke-dasharray="5 4" opacity=".7"><title>직전 정상 평균 '+fmt(v)+'</title></line>';});
+  if(reference)fields.forEach(function(f){if(f!=='seconds'&&metrics.indexOf('mean')<0)return;var st=referenceStats[f];if(st.mean!==null)svg+='<line class="curation-reference-mean" data-field="'+f+'" data-mean="'+st.mean+'" x1="0" x2="'+W+'" y1="'+y(f,st.mean)+'" y2="'+y(f,st.mean)+'" stroke="#7c3aed" stroke-width="2" stroke-dasharray="9 3 2 3"><title>'+esc('조회기간 평균 '+fmt(st.mean)+' · '+st.count+'매 · '+reference.from+' ~ '+reference.to)+'</title></line>';});
   svg+='</g>';
   if(compressed){segmentSpans.forEach(function(seg,i){var left=12+seg.offset/totalSpan*(W-24),width=seg.span/totalSpan*(W-24);svg+=curationTimeTicks(seg.start,seg.start+seg.span,left,width,H,layout.unit);if(i)svg+='<line class="curation-range-break" x1="'+left+'" x2="'+left+'" y1="'+T+'" y2="'+(H-B)+'" stroke="#94a3b8" stroke-dasharray="3 3"><title>선택하지 않은 시간 구간 생략</title></line>';});}
   else svg+=curationTimeTicks(t0,t1,12,W-24,H,layout.unit);
@@ -4766,6 +4591,9 @@ function renderCurationSupplyGraph(host,context,values,temperature,pressure,wide
   if(context.lot)host.innerHTML=host.innerHTML.replace(/직전 정상 평균/g,'이전 정상 LOT 평균');
   if(context.outlierIndices&&metrics.indexOf('mean')>=0)host.insertAdjacentHTML('afterbegin','<div class="opt-process-alert">◎ 평균 이탈 감지 · 빨간 테두리</div>');
   if(context.selectedMean)host.innerHTML=host.innerHTML.replace(/이전 정상 LOT 평균/g,'선택 영역 평균').replace(/앞 LOT 평균/g,'선택 영역 평균').replace(/직전 정상 평균/g,'선택 영역 평균');
+  if(reference){
+    host.insertAdjacentHTML('beforeend','<div class="curation-reference-summary" style="font-size:12px;margin:10px 0;color:#7c3aed">━ 조회기간 평균 · '+esc(reference.from.replace('T',' ')+' ~ '+reference.to.replace('T',' '))+' · 같은 설비·챔버·레시피 · LOT 첫 장 '+(dispFirstOn()?'포함':'제외')+'</div><table class="curation-reference-table" style="width:100%;font-size:12px"><thead><tr><th>항목</th><th>조회기간 평균 (유효 매수)</th><th>선택구간 평균 − 조회기간 평균</th></tr></thead><tbody>'+fields.filter(function(f){return labels[f];}).map(function(f){var st=referenceStats[f],selected=stats[f].selected.mean,delta=selected===null||st.mean===null?null:selected-st.mean;return '<tr>'+[labels[f],fmt(st.mean)+' ('+st.count+'매)',delta===null?'비교 불가':(delta>0?'+':'')+fmt(delta)].map(function(v){return '<td>'+esc(v)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table>');
+  }
   if((temperature||pressure)&&!cylinderDifference){var picks=document.createElement('div');picks.className='curation-stat-picks';picks.style.cssText='display:flex;gap:12px;margin:8px 0;font-size:12px';[['mean','● 평균'],['min','▼ 최솟값'],['max','■ 최댓값']].forEach(function(pair){var label=document.createElement('label'),check=document.createElement('input');label.style.color=markerColor(temperature?'temperature':'pressure',pair[0]);check.type='checkbox';check.dataset.metric=pair[0];check.checked=metrics.indexOf(pair[0])>=0;check.onchange=function(){axisState._metrics=Array.from(picks.querySelectorAll('input:checked')).map(function(e){return e.dataset.metric;});renderCurationSupplyGraph(host,context,values,temperature,pressure,wide,axisState);};label.appendChild(check);label.appendChild(document.createTextNode(pair[1]));picks.appendChild(label);});host.prepend(picks);}
   if(cylinderDifference){var picks=document.createElement('div');picks.className='curation-cylinder-picks';picks.style.cssText='display:flex;gap:12px;flex-wrap:wrap;margin:8px 0;font-size:12px';cylinderSeries.forEach(function(series){var label=document.createElement('label'),check=document.createElement('input');label.style.color=series.color;check.type='checkbox';check.dataset.series=series.key;check.checked=enabledCylinderSeries.indexOf(series)>=0;check.onchange=function(){axisState._cylinderSeries=Array.from(picks.querySelectorAll('input:checked')).map(function(e){return e.dataset.series;});renderCurationSupplyGraph(host,context,values,temperature,pressure,wide,axisState);};label.appendChild(check);label.appendChild(document.createTextNode(({mean:'● ',min:'▼ ',max:'■ '}[series.metric])+series.label));picks.appendChild(label);});host.prepend(picks);}
   syncCurationScroll(host,host.querySelector('.curation-supply-svg').parentElement);
@@ -4805,6 +4633,38 @@ function mountCurationSupply(box,data,host,points,region){
     [['10m','10분'],['30m','30분'],['60m','60분'],['6h','6시간'],['12h','12시간'],['day','1일']].forEach(function(pair){var option=document.createElement('option');option.value=pair[0];option.textContent=pair[1];sharedScale.appendChild(option);});
     sharedScale.value=state.dragXScale||'60m';sharedScale.onchange=function(){state.dragXScale=sharedScale.value;axes.forEach(function(axis,key){if(JSON.parse(key)[0]===scoreRegionKey(region))axis.xScale=state.dragXScale;});if(state.open)render();};sharedAxis.appendChild(sharedScale);controls.before(sharedAxis);
   }
+  if(region.selectedMean){
+    var comparison=document.createElement('div');comparison.className='curation-reference-controls';comparison.style.cssText='font-size:12px;margin:10px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center';
+    comparison.innerHTML='<b>조회기간 평균 비교</b><label>시작 <input class="curation-reference-from" type="datetime-local" step="1" required></label><label>종료 <input class="curation-reference-to" type="datetime-local" step="1" required></label><button type="button" class="btn primary curation-reference-apply">평균 조회·표시</button><button type="button" class="btn soft curation-reference-clear">비교 해제</button><span class="curation-reference-status" role="status"></span>';
+    controls.before(comparison);
+    var referenceFrom=comparison.querySelector('.curation-reference-from'),referenceTo=comparison.querySelector('.curation-reference-to'),referenceApply=comparison.querySelector('.curation-reference-apply'),referenceStatus=comparison.querySelector('.curation-reference-status'),referenceRequest=0;
+    referenceFrom.value=state.referenceFrom||'';referenceTo.value=state.referenceTo||'';
+    referenceApply.onclick=async function(){
+      var from=referenceFrom.value,to=referenceTo.value,start=Date.parse(from),end=Date.parse(to);
+      if(!referenceFrom.validity.valid||!referenceTo.validity.valid||!isFinite(start)||!isFinite(end)||start>end){referenceStatus.textContent='조회 시작·종료시각을 올바르게 입력하세요.';return;}
+      var request=++referenceRequest;referenceApply.disabled=true;referenceStatus.textContent='조회기간 자료 조회 중…';
+      try{
+        var response=await fetch('/api/scatter?limit=1000000&chamber=all&recipe=all&start='+encodeURIComponent(from)+'&end='+encodeURIComponent(to),{signal:controller.signal});
+        if(!response.ok)throw Error('조회기간 웨이퍼 조회 실패');var result=await response.json();
+        if(!live()||request!==referenceRequest)return;if(result.model_id!==data.model_id)throw Error('모델이 변경되었습니다. 산점도를 다시 조회하세요.');
+        var scope=new Set(context.points.map(function(p){return JSON.stringify([sensorTrendEquipment(p),p.chamber,p.mean_recipe||p.recipe]);})),seen=new Set();
+        var referencePoints=(result.points||[]).filter(function(p){var time=Date.parse(p.ts),id=key(p);if(seen.has(id)||!isFinite(time)||time<start||time>end||!scope.has(JSON.stringify([sensorTrendEquipment(p),p.chamber,p.mean_recipe||p.recipe])))return false;seen.add(id);return true;});
+        if(!referencePoints.length)throw Error('같은 설비·챔버·레시피의 조회기간 자료가 없습니다.');
+        var pending=referencePoints.filter(function(p){var row=cache[key(p)];return !row||!row.sensor_metrics||!row.step_timing||!row.valve_phases||row.valve_phases.version!==2;});
+        for(var i=0;i<pending.length;i+=64){
+          var batch=pending.slice(i,i+64).map(function(p){return {date:String(p.ts).slice(0,10),wid:p.wafer_id};});
+          var fetched=await fetchTrendBatch(source,data.model_id,'step-times',batch,controller.signal);
+          if(!live()||request!==referenceRequest)return;if(fetched.model_id!==data.model_id)throw Error('모델이 변경되었습니다. 산점도를 다시 조회하세요.');
+          (fetched.wafers||[]).forEach(function(row){cache[row.date+'/'+row.wid]=row;});
+          if(batch.some(function(p){return !cache[p.date+'/'+p.wid];}))throw Error('일부 웨이퍼 자료가 누락되었습니다. 다시 조회하세요.');
+        }
+        state.referenceFrom=from;state.referenceTo=to;state.referencePoints=referencePoints;
+        referenceStatus.textContent='조회 완료 · '+referencePoints.length+'매 · 보라색 점선: 조회기간 평균';if(state.open)render();
+      }catch(e){if(live()&&request===referenceRequest)referenceStatus.textContent=e.message;}
+      finally{if(request===referenceRequest)referenceApply.disabled=false;}
+    };
+    comparison.querySelector('.curation-reference-clear').onclick=function(){referenceRequest++;referenceApply.disabled=false;state.referencePoints=null;state.referenceFrom='';state.referenceTo='';referenceFrom.value='';referenceTo.value='';referenceStatus.textContent='';if(state.open)render();};
+  }
   // Rebuilding the result must not reset the user's reading position.
   function renderAtSensor(input){
     var sensor=input.dataset.sensor,top=input.getBoundingClientRect().top;
@@ -4827,6 +4687,7 @@ function mountCurationSupply(box,data,host,points,region){
   function live(){return section.isConnected&&!controller.signal.aborted&&box._data===data;}
   function key(p){return String(p.ts).slice(0,10)+'/'+p.wafer_id;}
   function render(){
+    context.referenceData=state.referencePoints?{points:state.referencePoints,rows:state.referencePoints.map(function(p){return cache[key(p)]||{};}),from:state.referenceFrom,to:state.referenceTo,phase:state.dragPhase||'process'}:null;
     chart.querySelectorAll('*').forEach(function(el){if(el._viewportResize)el._viewportResize.disconnect();});
     var rawRows=context.points.map(function(p){return cache[key(p)]||{};}),analysis=region.selectedMean?cachedCurationAnalysis(source,context.points,rawRows):null;
     var rows=analysis?analysis.rows:rawRows,detected=region.selectedMean?null:detectCurationSensors(context.lot?rows.filter(function(r,i){return context.roles[i]==='normal';}).concat(rows.filter(function(r,i){return context.roles[i]==='selected';})):rows,context.normal.length,state.phase);
@@ -4840,7 +4701,7 @@ function mountCurationSupply(box,data,host,points,region){
       var worst=auto.sensors.reduce(function(best,item){return !best||item.strength>best.strength?item:best;},null);
       if(phases.indexOf(state.dragPhase)<0)state.dragPhase=ranked.length?ranked[0].phase:'supply';
       var phaseButtons=document.createElement('div');phaseButtons.className='curation-phase-buttons';phaseButtons.style.cssText='display:flex;gap:8px;flex-wrap:wrap;width:100%';phaseButtons.setAttribute('aria-label','분석 결과 공정 선택');
-      phases.forEach(function(phase){var count=auto.sensors.filter(function(item){return item.phase===phase;}).length,b=document.createElement('button');b.type='button';b.dataset.phase=phase;b.className='btn '+(state.dragPhase===phase?'primary':'soft');b.textContent=phaseNames[phase]+' ('+count+')';if(worst&&worst.phase===phase){b.classList.add('curation-worst-phase');b.style.outline='3px solid #e11d48';b.style.outlineOffset='2px';b.textContent+=' · 최대 이탈';b.title='최초 분석 전체 구역 중 가장 큰 이탈: '+worst.strength.toFixed(2)+'배';}b.setAttribute('aria-pressed',String(state.dragPhase===phase));b.onclick=function(){state.dragPhase=phase;render();};phaseButtons.appendChild(b);});controls.appendChild(phaseButtons);if(excluded.length){var restoreSensors=document.createElement('button');restoreSensors.type='button';restoreSensors.className='btn soft curation-exclusions-reset';restoreSensors.textContent='관심 없음 초기화 ('+excluded.length+')';restoreSensors.onclick=function(){state.excludedSensors=[];render();};controls.appendChild(restoreSensors);}
+      phases.forEach(function(phase){var count=auto.sensors.filter(function(item){return item.phase===phase;}).length,b=document.createElement('button');b.type='button';b.dataset.phase=phase;b.className='btn '+(state.dragPhase===phase?'primary':'soft');b.textContent=phaseNames[phase]+' ('+count+')';if(worst&&worst.phase===phase){b.classList.add('curation-worst-phase');b.style.outline='3px solid #e11d48';b.style.outlineOffset='2px';b.textContent+=' · 평균 강도 상위';b.title='최초 분석 전체 센서 중 가장 큰 이상점 평균 이탈 강도: '+worst.strength.toFixed(2)+'배';}b.setAttribute('aria-pressed',String(state.dragPhase===phase));b.onclick=function(){state.dragPhase=phase;render();};phaseButtons.appendChild(b);});controls.appendChild(phaseButtons);if(excluded.length){var restoreSensors=document.createElement('button');restoreSensors.type='button';restoreSensors.className='btn soft curation-exclusions-reset';restoreSensors.textContent='관심 없음 초기화 ('+excluded.length+')';restoreSensors.onclick=function(){state.excludedSensors=[];render();};controls.appendChild(restoreSensors);}
       detected.sensors=ranked.filter(function(item){return item.phase===state.dragPhase;});
     }
     chart.innerHTML='<details style="font-size:12px;margin:8px 0"><summary>센서 자동 감지 기준</summary><div style="line-height:1.7;padding:6px 0">센서별 선택 공정 스텝 평균을 직전 정상 웨이퍼와 비교합니다. 정상·선택 각각 유효 5매 이상, 자료 유효율 80% 이상이 필요합니다. 정상 평균과의 차이가 max(정상 표준편차의 3배, 정상 평균 절댓값의 1%, 0.000000001)를 초과하고 선택 웨이퍼의 80% 이상이 같은 방향으로 초과할 때 감지합니다. 표준편차는 모집단 기준(ddof=0)입니다. 점수나 불량 판정은 바꾸지 않습니다.</div></details>';
@@ -4856,7 +4717,7 @@ function mountCurationSupply(box,data,host,points,region){
       note.textContent=!detected.total?'비교할 센서 자료가 없습니다.':!detected.tested?'센서 자동 감지에 필요한 정상·선택 비교 자료가 부족합니다.':'현재 기준에서 높거나 낮아진 센서가 감지되지 않았습니다.';if(context.lot)note.textContent=note.textContent.replace('정상·선택','이전 정상 LOT·선택 LOT');if(region.selectedMean&&excluded.length)note.textContent='제외한 센서를 제외하면 감지 기준을 넘는 센서가 없습니다.';else if(region.selectedMean)note.textContent=!detected.tested?'선택 웨이퍼의 유효 자료가 부족합니다.':'선택 영역 평균에서 기준 이상 벗어난 센서가 없습니다.';chart.appendChild(note);
       var duration=document.createElement('div');chart.appendChild(duration);renderCurationSupplyGraph(duration,context,base,'','',state.wide,sensorAxes(''));return;
     }
-    var info=document.createElement('div');info.className='muted';info.style.cssText='font-size:12px;margin:8px 0';info.textContent=region.selectedMean?'공정 관련 센서 우선 · 같은 우선순위는 최대 이탈 배율 순 · 감지 센서 / 분석 가능 센서 (최초 분석 기준) · 관심 없음 선택 시 같은 공정·구역의 다음 순위 표시':'변화가 큰 순서 · 상위 3개 그래프 자동 펼침 · 나머지는 센서명을 누르면 표시';chart.appendChild(info);
+    var info=document.createElement('div');info.className='muted';info.style.cssText='font-size:12px;margin:8px 0';info.textContent=region.selectedMean?'공정 관련 센서 우선 · 같은 우선순위는 이상점 평균 이탈 강도 순 (각 이상점의 평균 대비 절대편차 ÷ 감지 기준값의 평균) · 감지 센서 / 분석 가능 센서 (최초 분석 기준) · 관심 없음 선택 시 같은 공정·구역의 다음 순위 표시':'변화가 큰 순서 · 상위 3개 그래프 자동 펼침 · 나머지는 센서명을 누르면 표시';chart.appendChild(info);
     var previousArea=null,areaPanel=null,areaGroups=[];
     if(region.selectedMean){var phaseResult=auto.results.find(function(r){return r.phase===state.dragPhase;});areaGroups=curationSensorAreas(auto.sensors.filter(function(item){return item.phase===state.dragPhase;}),excluded,phaseResult.result.testedSensors);detected.sensors=areaGroups.flatMap(function(group){var visible=group.sensors.concat(group.ignored).sort(function(a,b){return a.originalRank-b.originalRank;});if(!group.sensors.length)visible.push({area:group.area,exhausted:true});return visible;});}
 
@@ -4866,7 +4727,7 @@ function mountCurationSupply(box,data,host,points,region){
         areaPanel=document.createElement('details');areaPanel.className='curation-area';areaPanel.dataset.area=item.area;areaPanel.style.cssText='border:1px solid var(--line);border-radius:8px;padding:10px;margin:10px 0';
         var areaTitle=document.createElement('summary');areaTitle.className='curation-area-title';areaTitle.style.cssText='font-size:14px;font-weight:600;cursor:pointer';
         var isWorst=group.strength===Math.max.apply(null,areaGroups.map(function(g){return g.strength;}));
-        areaTitle.textContent=group.label+(isWorst?' · 최대 이탈 구역':'')+' · 최대 이탈 '+group.strength.toFixed(2)+'배 · 감지 '+group.detected+' / 분석 가능 '+group.tested+'개';
+        areaTitle.textContent=group.label+(isWorst?' · 평균 강도 상위 구역':'')+' · 대표 평균 이탈 강도 '+group.strength.toFixed(2)+'배 · 감지 '+group.detected+' / 분석 가능 '+group.tested+'개';
         if(isWorst){areaPanel.classList.add('curation-worst-area');areaPanel.style.borderColor='#e11d48';}
         state.areaOpen=state.areaOpen||{};areaPanel.open=Object.prototype.hasOwnProperty.call(state.areaOpen,areaKey)?state.areaOpen[areaKey]:previousArea===null;
         (function(panel,key){panel.addEventListener('toggle',function(){state.areaOpen[key]=panel.open;});})(areaPanel,areaKey);
@@ -4883,11 +4744,11 @@ function mountCurationSupply(box,data,host,points,region){
       }
       var part=document.createElement('details');part.className='curation-auto-sensor';part.dataset.sensor=item.sensor;if(item.originalRank)part.dataset.originalRank=item.originalRank;if(item.phase)part.dataset.phase=item.phase;part.style.cssText='border-top:1px solid var(--line);padding:10px 0';
       var heading=document.createElement('summary');heading.style.cssText='cursor:pointer;font-size:14px;font-weight:600';
-      heading.textContent=item.sensor+' · '+(item.direction==='high'?'↑ 높아짐':'↓ 낮아짐')+(context.lot?' · 이전 정상 LOT ':' · 정상 ')+Number(item.normalMean.toPrecision(5))+' → 선택 '+Number(item.selectedMean.toPrecision(5));if(region.selectedMean)heading.textContent=item.phaseRank+'위'+(item.originalRank>item.phaseRank?' (기존 '+item.originalRank+'위)':'')+' · '+item.sensor+' ['+phaseNames[item.phase]+'] · 이탈 '+item.strength.toFixed(2)+'배 · 선택 평균 '+Number(item.normalMean.toPrecision(5))+' · 높은 값 '+item.high+'매 / 낮은 값 '+item.low+'매';part.appendChild(heading);
+      heading.textContent=item.sensor+' · '+(item.direction==='high'?'↑ 높아짐':'↓ 낮아짐')+(context.lot?' · 이전 정상 LOT ':' · 정상 ')+Number(item.normalMean.toPrecision(5))+' → 선택 '+Number(item.selectedMean.toPrecision(5));if(region.selectedMean)heading.textContent=item.phaseRank+'위'+(item.originalRank>item.phaseRank?' (기존 '+item.originalRank+'위)':'')+' · '+item.sensor+' ['+phaseNames[item.phase]+'] · 평균 이탈 강도 '+item.strength.toFixed(2)+'배 · 선택 평균 '+Number(item.normalMean.toPrecision(5))+' · 높은 값 '+item.high+'매 / 낮은 값 '+item.low+'매';part.appendChild(heading);
       if(region.selectedMean){var ignoreLabel=document.createElement('label');ignoreLabel.style.cssText='display:inline-flex;align-items:center;gap:4px;margin-left:12px;font-size:12px;font-weight:400;cursor:pointer';var ignore=document.createElement('input');ignore.type='checkbox';ignore.className='curation-ignore-sensor';ignore.dataset.sensor=item.sensor;ignore.setAttribute('aria-label',item.sensor+' 관심 없음');ignoreLabel.appendChild(ignore);ignoreLabel.appendChild(document.createTextNode('관심 없음'));ignoreLabel.addEventListener('click',function(e){e.stopPropagation();});ignore.addEventListener('keydown',function(e){e.stopPropagation();});ignore.onchange=function(){if(!ignore.checked)return;state.excludedSensors=Array.from(new Set((state.excludedSensors||[]).concat([curationSensorExclusionKey(item.phase,item.sensor)])));state.areaOpen=state.areaOpen||{};state.areaOpen[item.phase+':'+item.area]=true;renderAtSensor(ignore);};heading.appendChild(ignoreLabel);}
       if(region.selectedMean){var out=document.createElement('div');out.style.cssText='font-size:12px;overflow-wrap:anywhere';out.textContent=item.outliers.map(function(o){return context.points[o.index].wafer_id+' ('+Number(o.value.toPrecision(5))+')';}).join(', ');part.appendChild(out);}
       var panel=document.createElement('div');part.appendChild(panel);(region.selectedMean?areaPanel:chart).appendChild(part);var drawn=false,ownArea=region.selectedMean?areaPanel:null;
-      function draw(){if(drawn||!part.open||(ownArea&&!ownArea.open))return;drawn=true;var pressure=scSensorGroup(item.sensor)==='pressure';var values=rows.map(function(r){return curationSupplyValues(r,pressure?'':item.sensor,pressure?item.sensor:'',item.phase||state.phase);});var graphContext=region.selectedMean?Object.assign({},context,{outlierIndices:item.outliers.map(function(o){return o.index;}),ngIndices:item.ngIndices||[]}):context;if(item.sensor===CURATION_CYLINDER)renderCurationCylinderComponents(panel,graphContext,rows,item.phase||state.phase,state.wide,function(name){return sensorAxes(name,item.phase);});else renderCurationSupplyGraph(panel,graphContext,values,pressure?'':item.sensor,pressure?item.sensor:'',state.wide,sensorAxes(item.sensor,item.phase));}
+      function draw(){if(drawn||!part.open||(ownArea&&!ownArea.open))return;drawn=true;var pressure=scSensorGroup(item.sensor)==='pressure';var values=rows.map(function(r){return curationSupplyValues(r,pressure?'':item.sensor,pressure?item.sensor:'',item.phase||state.phase);});var graphContext=region.selectedMean?Object.assign({},context,{outlierIndices:item.outliers.map(function(o){return o.index;}),ngIndices:item.ngIndices||[],referenceData:context.referenceData?Object.assign({},context.referenceData,{phase:item.phase||state.phase}):null}):context;if(item.sensor===CURATION_CYLINDER)renderCurationCylinderComponents(panel,graphContext,rows,item.phase||state.phase,state.wide,function(name){return sensorAxes(name,item.phase);});else renderCurationSupplyGraph(panel,graphContext,values,pressure?'':item.sensor,pressure?item.sensor:'',state.wide,sensorAxes(item.sensor,item.phase));}
       part.addEventListener('toggle',draw);if(ownArea)ownArea.addEventListener('toggle',draw);if(region.selectedMean||index<3){part.open=true;draw();}
     });
   }
@@ -4964,7 +4825,7 @@ function curationRangeGroups(points,positions,ranges){
   return curationDragGroups(points,selected).map(function(group){return Object.assign({},group,{displayRows:selected.filter(function(p){return Number.isFinite(p.ratio)&&isFinite(Date.parse(p.ts));}),rangeNumber:1,rangeCount:ranges.length,timeSegments:timeSegments,selectionRange:ranges.map(function(range){return range.slice();}).sort(function(a,b){return a[0]-b[0]||a[1]-b[1];}),lot:'선택 구간 통합'});});
 }
 function mountScatterDrag(box,data,points,positions){
-  if(box.id!=='drillTrendChart')return;
+  if(box.id!=='drillTrendChart'&&!box._modelChart)return;
   if(box._dragAnalysis&&box._dragAnalysis._curationSupplyAbort)box._dragAnalysis._curationSupplyAbort.abort();
   var scroll=box.querySelector('.sc-scroll'),svg=scroll&&scroll.querySelector('svg');if(!svg)return;
   var controls=document.createElement('div');controls.style.cssText='margin:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap';controls.innerHTML='<b>구간 분석</b><button class="btn primary scatter-range-analyze">선택 구간 분석</button><button class="btn soft scatter-drag-clear">전체 구간 해제</button><span class="muted">X축에서 시작·끝 클릭 · 여러 구간 통합 분석</span><span class="scatter-range-status" role="status"></span><div class="scatter-range-list" style="width:100%;display:flex;gap:8px;flex-wrap:wrap"></div>';scroll.before(controls);
@@ -4995,7 +4856,18 @@ function mountScatterDrag(box,data,points,positions){
   if(saved.analyzed&&ranges.length)controls.querySelector('.scatter-range-analyze').click();
 }
 
-function drawScatter(box, d, opts){
+function scatterModelPoint(p,mode,bands){
+  var c=(p.score_components||{})[mode],value=c&&c.available&&componentHasRatio(c)?componentRatio(c):null;
+  bands=bands||{warn:2,crit:3};
+  return Object.assign({},p,{ratio:value,ratio_x:value,ratio_thr:value,
+    band:value===null?'na':value>=Number(bands.crit||3)?'crit':value>=Number(bands.warn||2)?'warn':value>=1?'caution':'ok',
+    verdict:value===null?'NA':value>=1?'NG':'OK'});
+}
+function scatterModelMissing(d,mode){
+  var reasons=new Set();(d.points||[]).forEach(function(p){var c=(p.score_components||{})[mode];reasons.add(c&&c.reason||'저장된 모델 점수 없음');});
+  return Array.from(reasons).join(' · ');
+}
+function mountScatterModes(box,d,opts){
   if(box._dragAnalysis&&box._dragAnalysis._curationSupplyAbort)box._dragAnalysis._curationSupplyAbort.abort();
   if(box._curationSupplyAbort)box._curationSupplyAbort.abort();
   if(box.id==='drillTrendChart'&&box._data&&(box._data._stepSource||box._data)!==(d._stepSource||d))clearTrendAnalysis();
@@ -5007,6 +4879,7 @@ function drawScatter(box, d, opts){
   if(box._sensorAbort) box._sensorAbort.abort();
   opts=opts||box._opts||{};                                // 재렌더(Y축 조절) 시 축범위 유지
   if(box.id==='drillTrendChart'){
+    INTEGRATED_SCORE_MODE=(box._scoreMode||'integrated')==='integrated'?'integrated':'original';
     if(!SC_SENSOR_VIEW_STATE||SC_SENSOR_VIEW_STATE.model!==d.model_id)
       SC_SENSOR_VIEW_STATE={model:d.model_id,original:true,selection:{temperature:[],pressure:[]},ymax:{}};
     if(d._sensorSelection)SC_SENSOR_VIEW_STATE.selection=d._sensorSelection;
@@ -5016,12 +4889,49 @@ function drawScatter(box, d, opts){
     if(scMountSteps(box,d,opts))return;
   }
   box._data=d; box._opts=opts;
+  var states=box._modelPanels||(box._modelPanels={});
+  Array.from(box.children).filter(function(el){return el.classList.contains('scatter-model-panel');}).forEach(function(panel){
+    var entry=states[panel.dataset.scoreMode];if(entry){entry.open=panel.open;entry.scrolls=Array.from(entry.chart.querySelectorAll('.sc-scroll')).map(function(el){return {el:el,left:el.scrollLeft};});}
+  });
+  Object.keys(states).forEach(function(mode){var chart=states[mode].chart;if(chart._sensorAbort)chart._sensorAbort.abort();if(chart._dragAnalysis&&chart._dragAnalysis._curationSupplyAbort)chart._dragAnalysis._curationSupplyAbort.abort();});
+  box.innerHTML='';
+  [['integrated','종합'],['tcn','TCN'],['step_time','스텝 소요시간'],['cylinder','실린더']].forEach(function(item){
+    var entry=states[item[0]];
+    if(!entry){var chart=document.createElement('div');chart.className='scatter-mode-content';chart.style.cssText='padding-top:8px';chart._modelChart=true;chart._scoreMode=item[0];chart._fitWidth=box._fitWidth;chart._scatterExpanded=box._scatterExpanded;entry=states[item[0]]={open:item[0]==='integrated',chart:chart};}
+    var panel=document.createElement('details');panel.className='scatter-model-panel';panel.dataset.scoreMode=item[0];panel.open=entry.open;
+    panel.style.cssText='border:1px solid var(--line);border-radius:10px;margin:8px 0;padding:8px 12px';
+    var summary=document.createElement('summary');summary.textContent=item[1]+' 산점도';summary.style.cssText='cursor:pointer;font-weight:600;padding:6px 0';panel.appendChild(summary);panel.appendChild(entry.chart);box.appendChild(panel);
+    (entry.scrolls||[]).forEach(function(saved){saved.el.scrollLeft=saved.left;});
+    var rendered=false;
+    function renderPanel(){if(rendered||!panel.open||!panel.isConnected)return;rendered=true;drawScatter(entry.chart,d,entry.chart._opts||opts);}
+    panel.addEventListener('toggle',function(){if(!panel.isConnected)return;entry.open=panel.open;if(panel.open){renderPanel();pinScatterYAxis(entry.chart.querySelector('.sc-scroll'));}});
+    renderPanel();
+  });
+  syncTrendAnalysis(box,d.points||[],{H:280});
+}
+function openScatterWafer(wid,date,overview,mode){
+  INTEGRATED_SCORE_MODE=mode==='integrated'?'integrated':'original';
+  openWaferInDetail(wid,date,overview);
+}
+
+function drawScatter(box,d,opts){
+  if(box.id==='drillTrendChart')return mountScatterModes(box,d,opts);
+  return drawScatterPlot(box,d,opts);
+}
+function drawScatterPlot(box,d,opts){
+  if(box._dragAnalysis&&box._dragAnalysis._curationSupplyAbort)box._dragAnalysis._curationSupplyAbort.abort();
+  if(box._curationSupplyAbort)box._curationSupplyAbort.abort();
+  if(box._sensorAbort)box._sensorAbort.abort();
+  opts=opts||box._opts||{};
+  box._data=d;box._opts=opts;
   // ★ 그림자 필터 id 를 렌더마다 고유하게 — 여러 산점도가 같은 id(dsh)를 쓰면
   //   url(#dsh) 이 '문서의 첫 번째'(다른 탭의 숨은 svg)로 해석되고, 구형 WebView2 는
   //   숨은 서브트리의 필터를 못 그려 점이 통째로 안 보였다(새로고침 후엔 정상인 증상).
   var FID='dsh'+(window.__dshSeq=(window.__dshSeq||0)+1);
+  var scoreMode=box._modelChart?box._scoreMode:INTEGRATED_SCORE_MODE;
   var pts=(d.points||[]);
-  if(INTEGRATED_SCORE_MODE==='integrated')pts=pts.map(function(p){return integratedPoint(p,!!d._stepKey,(d.rule||{}).bands);});
+  if(scoreMode==='integrated')pts=pts.map(function(p){return integratedPoint(p,!!d._stepKey,(d.rule||{}).bands);});
+  else if(scoreMode==='step_time'||scoreMode==='cylinder')pts=pts.map(function(p){return scatterModelPoint(p,scoreMode,(d.rule||{}).bands);});
   pts=pts.filter(function(p){return p.ratio!=null;});
   pts.sort(function(a,b){return String(a.ts||'').localeCompare(String(b.ts||''));});   // 끝시각 오름차순
   // ── ★ 챔버 보정(σ) 모드: DSV 마다 세팅(히터 목표값 등)이 달라 복원오차의 기준선(offset)·
@@ -5031,7 +4941,7 @@ function drawScatter(box, d, opts){
   // ★ 표시 판정 규칙(서버 단일 소스): 모드(raw|per_tp)·임계·밴드. 챔버 보정(σ)은 제거됨.
   var RULE=(d&&d.rule)||SC_RULE||{mode:'raw',bands:{warn:1.05,crit:1.2},thr_scale:{},thr_abs:{}};
   SC_RULE=RULE; setBands(RULE.bands);
-  var PERTP=INTEGRATED_SCORE_MODE!=='integrated'&&!d._stepKey&&(RULE.mode==='per_tp');
+  var PERTP=(scoreMode==='original'||scoreMode==='tcn')&&!d._stepKey&&(RULE.mode==='per_tp');
   var BW=Number((RULE.bands||{}).warn)||2, BC=Number((RULE.bands||{}).crit)||3;
   var REF=1;                                              // 축은 항상 '임계=1' 정규화(밴드 비교 용이)
   SC_RECIPES=Array.from(new Set((d.points||[]).map(function(p){return p.recipe||'';}).filter(Boolean))).sort();
@@ -5051,13 +4961,16 @@ function drawScatter(box, d, opts){
     } else {
       box.innerHTML='';
     }
+    if(box._modelChart){
+      box.innerHTML='<div class="muted" style="padding:16px">'+esc('표시할 점수가 없습니다. '+scatterModelMissing(d,scoreMode))+'</div>';
+
+    }
     return; }
-  var compact=box.id==='drillTrendChart'&&box._scatterExpanded===false;
+  var compact=(box.id==='drillTrendChart'||box._modelChart)&&box._scatterExpanded===false;
   var H=compact?150:280,pad={l:50,r:20,t:26,b:38}, ih=H-pad.t-pad.b;
   var n=pts.length, ys=pts.map(function(p){return p.ratio;}).filter(Number.isFinite);
-  // Y축: 0부터. 상한 = 사용자 지정(box._ymax) 또는 자동(최대점수 올림, 최소 2/보정모드 4)
-  var autoMax=Math.max(Math.ceil(BC)+1, Math.ceil(Math.max.apply(null,[REF].concat(ys))));
-  var ymax=(box._ymax&&isFinite(box._ymax)&&box._ymax>0)?box._ymax:autoMax, ymin=0;
+  // Display scores above 3 at the top while preserving their actual values.
+  var ymax=3, ymin=0;
   // X축: '실제 종료시각' 매핑. 축 범위 = '점이 실제로 찍힌 구간'으로 자동 크롭(양옆 여백 최소).
   //  예: 한달 조회라도 데이터가 하루뿐이면 그 하루 근방만 표시 → 좌우 빈칸 제거.
   var times=pts.map(function(p){var t=new Date(p.ts).getTime(); return isFinite(t)?t:null;});
@@ -5131,7 +5044,7 @@ function drawScatter(box, d, opts){
     var vy=Math.min(p.ratio,ymax);                        // 상한 초과점은 상단에 캡 표시
     var mk=shapes[smap[p.recipe||'unknown']](x(i),y(vy),ng?4.5:3.3);   // 모양 = 유형
     var wid=encodeURIComponent(p.wafer_id||''), dstr=String(p.ts||'').slice(0,10);
-    return '<g class="opt-wafer-point" tabindex="0" role="button" aria-label="'+esc(p.wafer_id+' · '+p.chamber+' · 이상점수 '+scatterScoreText(p,!!d._stepKey))+'" style="cursor:pointer" onclick="openWaferInDetail(\''+wid+'\',\''+dstr+'\','+(box.id==='drillTrendChart'?'true':'false')+')">'
+    return '<g class="opt-wafer-point" tabindex="0" role="button" aria-label="'+esc(p.wafer_id+' · '+p.chamber+' · 이상점수 '+scatterScoreText(p,!!d._stepKey))+'" style="cursor:pointer" onclick="openScatterWafer(\''+wid+'\',\''+dstr+'\','+((box.id==='drillTrendChart'||box._modelChart)?'true':'false')+',\''+scoreMode+'\')">'
       +(ng&&!_dim?'<circle class="opt-alert-ring" cx="'+x(i)+'" cy="'+y(vy)+'" r="7.3" stroke="'+({crit:'var(--bad)',warn:'var(--chart-band-warn)',caution:'var(--warn)'}[bd]||'var(--warn)')+'"/>':'')
       +'<path class="opt-point-mark" d="'+mk+'" fill="'+c+'" fill-opacity="'+op.toFixed(3)+'" stroke="'+(_dim?c:(ng?'var(--chart-bg)':c))+'" stroke-width="'+(_dim?0.8:1.4)+'"'
         +(_dim?' stroke-dasharray="2 2" stroke-opacity="0.5"':' filter="url(#'+FID+')"')+'>'
@@ -5181,13 +5094,14 @@ function drawScatter(box, d, opts){
         +'<text x="'+xx2.toFixed(1)+'" y="'+(H-pad.b+22)+'" fill="var(--chart-axis)" font-size="10.5" text-anchor="middle">'+lb2+'</text>';
     }
   }
-  var ycx=18, ycy=pad.t+ih/2;
+  var ycx=10, ycy=pad.t+ih/2;
   var ytitle='<text x="'+ycx+'" y="'+ycy.toFixed(1)+'" fill="var(--chart-axis)" font-size="11.5" font-weight="600" text-anchor="middle" transform="rotate(-90 '+ycx+' '+ycy.toFixed(1)+')">'+(PERTP?'점수/타임포인트 (임계=1)':'이상 점수 (임계=1)')+'</text>';
+  var fixedY=scatterFixedYAxis(grid,ytitle,pad.l,H-pad.b+10);
   // 범례(색·모양 견본) — 점이 어느 챔버·유형인지 읽으려면 표가 있어야 한다.
   //   설명 '문장'은 툴팁으로 옮겼지만, 이 표는 견본 자체가 정보라 화면에 둔다.
   var chleg=chOrder.map(function(ch){ return '<span style="white-space:nowrap"><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:'+chamberColor(ch)+';vertical-align:-1px"></span> '+esc(String(ch).toUpperCase())+'</span>'; }).join(' &nbsp; ');
   var rleg=sorder.map(function(k){ return '<span style="white-space:nowrap"><svg width="16" height="14" style="vertical-align:-2px"><path d="'+shapes[smap[k]](8,7,4.6)+'" fill="var(--chart-axis)"/></svg> '+esc(k)+'</span>'; }).join(' &nbsp; ');
-  var head='<div class="opt-plot-toolbar"><button type="button" class="btn soft sc-fit" aria-pressed="'+fit+'">'+(fit?'가로 스크롤 보기':'한눈에 보기')+'</button>'+(box.id==='drillTrendChart'?'<button type="button" class="btn soft sc-size">'+(compact?'그래프 높이 확대':'그래프 높이 축소')+'</button>':'')+'</div>'+'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">'
+  var head='<div class="opt-plot-toolbar"><button type="button" class="btn soft sc-fit" aria-pressed="'+fit+'">'+(fit?'가로 스크롤 보기':'한눈에 보기')+'</button>'+((box.id==='drillTrendChart'||box._modelChart)?'<button type="button" class="btn soft sc-size">'+(compact?'그래프 높이 확대':'그래프 높이 축소')+'</button>':'')+'</div>'+'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">'
     +'<span title="점 색 = 챔버 · 점 모양 = 유형 · 진한 점 = 불량 · 옅은 점 = 정상'
       +String.fromCharCode(10)+(useTime?'가로축 = 실제 종료시각(점 간격이 실제 시간 간격, 멀수록 오래 쉼)':'가로축 = 검사 순번(왼쪽이 먼저 끝난 웨이퍼)')
       +String.fromCharCode(10)+'점에 마우스를 올리면 챔버·유형·점수가, 누르면 상세 진단이 열립니다."'
@@ -5211,8 +5125,8 @@ function drawScatter(box, d, opts){
         +SC_SCALE_KEYS.map(function(v){var lab={'10m':'10분','30m':'30분','60m':'60분','6h':'6시간','12h':'12시간','day':'일'}[v];return '<option value="'+v+'"'+(v===scKey?' selected':'')+'>'+lab+'</option>';}).join('')
         +'</select></span>'
       +'<span style="display:flex;gap:5px;align-items:center;white-space:nowrap">Y최대 '
-        +'<input type="number" class="sc-ymax" min="1" step="1" value="'+ymax+'" style="width:60px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px">'
-        +'<button type="button" class="btn soft sc-yauto" style="font-size:11.5px;padding:3px 8px">자동</button></span>'
+        +'<input type="number" class="sc-ymax" disabled title="Y축 0~3 고정 · 3 초과 점수는 3에 표시" min="1" step="1" value="'+ymax+'" style="width:60px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px">'
+        +'<button type="button" class="btn soft sc-yauto" disabled style="font-size:11.5px;padding:3px 8px">자동</button></span>'
       +'<span style="display:flex;gap:4px;align-items:center;white-space:nowrap" title="밴드 경계(임계의 배수). 1~경고=주의, 경고~심각=경고, 심각 이상=심각. 값을 바꾼 뒤 [적용]을 눌러야 반영됩니다.">밴드 '
         +'<input type="number" class="sc-bw" min="1.01" step="0.1" value="'+BW+'" style="width:58px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px" title="경고 시작 배수">'
         +'<span style="opacity:.6">~</span>'
@@ -5240,7 +5154,7 @@ function drawScatter(box, d, opts){
     +'<div class="sc-scroll" style="border:1px solid var(--line-soft);border-radius:14px;background:var(--chart-bg);padding:8px 6px;box-shadow:0 1px 3px rgba(30,41,59,.04);overflow-x:auto">'
     +'<svg viewBox="0 0 '+W+' '+H+'" style="'+(needScroll?('width:'+W+'px;min-width:'+W+'px'):'width:100%')+';height:auto;display:block">'
     +'<defs><filter id="'+FID+'" x="-60%" y="-60%" width="220%" height="220%"><feDropShadow dx="0" dy="1" stdDeviation="1.1" flood-color="#334155" flood-opacity="0.28"/></filter></defs>'
-    +ngZone+grid+trend+dots+xlab+ytitle
+    +ngZone+fixedY.grid+trend+dots+xlab+fixedY.axis
     +'</svg></div>';
   // ★ 스크롤 복원: 이전에 보던 '중심 비율' 지점으로(새 폭 기준 환산)
   if(_scFrac!=null){
@@ -5250,19 +5164,22 @@ function drawScatter(box, d, opts){
     }
   }
   box.querySelectorAll('.opt-wafer-point').forEach(function(point){point.addEventListener('keydown',function(event){if(event.key==='Enter'||event.key===' '){event.preventDefault();point.dispatchEvent(new MouseEvent('click',{bubbles:true}));}});});
-  if(d._stepKey||INTEGRATED_SCORE_MODE==='integrated')box.querySelectorAll('.sc-thr,.sc-thr-reset,.sc-trc').forEach(function(el){el.disabled=true;el.title=INTEGRATED_SCORE_MODE==='integrated'?'통합 점수는 모델별 임계 대비 최댓값이며 판정 기준은 1입니다.':'선택 스텝은 학습 OK 평균+3.5σ 임계를 사용합니다.';});
+  if(scoreMode==='step_time'||scoreMode==='cylinder'){
+    var missing=(d.points||[]).filter(function(p){var c=(p.score_components||{})[scoreMode];return !c||!c.available||!componentHasRatio(c);});
+    if(missing.length){var notice=document.createElement('div');notice.className='muted scatter-model-missing';notice.textContent='점수 미적용 '+missing.length+'매 · '+scatterModelMissing({points:missing},scoreMode);box.prepend(notice);}
+  }
+  if(d._stepKey||scoreMode==='integrated'||scoreMode==='step_time'||scoreMode==='cylinder')box.querySelectorAll('.sc-thr,.sc-thr-reset,.sc-trc').forEach(function(el){el.disabled=true;el.title=scoreMode==='integrated'?'종합 점수는 모델별 임계 대비 최댓값이며 판정 기준은 1입니다.':scoreMode==='step_time'||scoreMode==='cylinder'?'모델별 점수는 해당 모델의 임계 대비 비율이며 판정 기준은 1입니다.':'선택 스텝은 학습 OK 평균+3.5σ 임계를 사용합니다.';});
   mountScatterDrag(box,d,pts,pts.map(function(p,i){return {x:x(i),y:y(Math.min(p.ratio,ymax))};}));
+  pinScatterYAxis(box.querySelector('.sc-scroll'));
   // LOT 기반 큐레이션 비활성화 (드래그 영역 분석은 유지).
   // mountScoreCuration(box,d);
   mountSensorScatter(box, pts, {W:W,H:H,compact:compact,needScroll:needScroll,xs:pts.map(function(p,i){return x(i);}),xlab:xlab});
-  syncTrendAnalysis(box,pts,{W:W,H:H,needScroll:needScroll,xs:pts.map(function(p,i){return x(i);}),xlab:xlab});
+  syncTrendAnalysis(box,d.points||[],{W:W,H:H,needScroll:needScroll,xs:pts.map(function(p,i){return x(i);}),xlab:xlab});
 
   box.querySelector('.sc-fit').onclick=function(){box._fitWidth=!fit;box._scatterExpanded=true;drawScatter(box,box._data);};
   var sizeButton=box.querySelector('.sc-size');
   if(sizeButton)sizeButton.onclick=function(){box._scatterExpanded=compact;drawScatter(box,box._data);};
-  var yin=box.querySelector('.sc-ymax'), yauto=box.querySelector('.sc-yauto'), ysc=box.querySelector('.sc-scale');
-  if(yin) yin.addEventListener('change',function(){ var v=parseFloat(yin.value); box._ymax=(isFinite(v)&&v>0)?v:null; drawScatter(box, box._data); });
-  if(yauto) yauto.addEventListener('click',function(){ box._ymax=null; drawScatter(box, box._data); });
+  var ysc=box.querySelector('.sc-scale');
   if(ysc) ysc.addEventListener('change',function(){
     if(box.id==='drillTrendChart'){
       box._restoreTrendPanels=trendAnalysisLoaded(box);
@@ -6476,7 +6393,7 @@ function wireSettings(){
     btn.disabled=true; var old=btn.textContent; btn.textContent='생성 중…'; if(msg) msg.textContent='현재 데이터로 HTML 생성 중… (수 초~수십 초)';
     try{
       var exportPairs=['differenceView','differenceViewOther'].flatMap(function(key){return ((SC_SENSOR_VIEW_STATE||{})[key]||{}).pairs||[];});
-      var r=await fetch('/api/export-html?trend_pairs='+encodeURIComponent(JSON.stringify(exportPairs))+'&include_scores='+$('#exportScores').checked+'&include_trends=false&include_differences='+$('#exportDifferences').checked+'&include_equipment='+$('#exportEquipment').checked+'&include_recipe='+$('#exportRecipe').checked+'&include_chamber_means='+$('#exportChamberMeans').checked+'&include_detail='+$('#exportDetail').checked+'&trend_metrics='+encodeURIComponent(trendStats.join(','))); if(!r.ok) throw new Error('생성 실패');
+      var r=await fetch('/api/export-html?trend_pairs='+encodeURIComponent(JSON.stringify(exportPairs))+'&include_scores='+$('#exportScores').checked+'&include_trends=false&include_differences='+$('#exportDifferences').checked+'&include_equipment='+$('#exportEquipment').checked+'&include_recipe='+$('#exportRecipe').checked+'&include_detail='+$('#exportDetail').checked+'&trend_metrics='+encodeURIComponent(trendStats.join(','))); if(!r.ok) throw new Error('생성 실패');
       var blob=await r.blob();
       var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
       var d=new Date(); function p(x){return String(x).padStart(2,'0');}
@@ -6759,7 +6676,7 @@ function auxiliarySensorItems(components){
   if(!components)return [];
   var list=[],st=components.step_time||{},cy=components.cylinder||{};
   if(st.available){
-    var steps=(Array.isArray(st.step_details)?st.step_details:[]).map(function(d){return {index:'step_time:'+d.step,sensor:d.label,score:d.robust_deviation,ratio:d.robust_deviation,_aux:d,_kind:'step_time',_allSteps:st.step_details,_pv:st.pv,_tooltip:'실제 '+d.actual+'초 · 정상 중앙값 '+d.median+'초 · IQR '+d.q25+'~'+d.q75+' · 기여도 '+d.contribution+' · 전체 시간 ratio '+st.ratio+' · 막대=robust deviation(진단값)'};});
+    var steps=(Array.isArray(st.step_details)?st.step_details:[]).map(function(d){return {index:'step_time:'+d.step,sensor:d.label,score:d.robust_deviation,ratio:d.robust_deviation,_aux:d,_kind:'step_time',_allSteps:st.step_details,_tooltip:'실제 '+d.actual+'초 · 정상 중앙값 '+d.median+'초 · IQR '+d.q25+'~'+d.q75+' · 전체 시간 ratio '+st.ratio+' · 막대=robust deviation(진단값)'};});
     list.push({index:'step_time',sensor:'스텝 소요시간',score:st.ratio,ratio:st.ratio,_aux:st,_kind:'step_time_group',_children:steps,_tooltip:storedComponentNotice(st)+' · 스텝시간 전체 IF 점수: '+st.ratio+' · 클릭하여 스텝별 '+steps.length+'개 펼치기'});
   }
   if(cy.available){
@@ -6767,55 +6684,6 @@ function auxiliarySensorItems(components){
     list.push({index:'cylinder',sensor:'실린더',score:componentRatio(cy),ratio:componentRatio(cy),_aux:cy,_kind:'cylinder_group',_children:children,_tooltip:storedComponentNotice(cy)+' · '+(cy.scaling_applied?'실린더 정규화 점수: ':'실린더 전체 점수: ')+(cy.ratio_infinite?scoreText(Infinity):cy.ratio)+(Number.isFinite(cy.raw_ratio)?' · 기존 threshold ratio: '+cy.raw_ratio:'')+' · 클릭하여 스텝별 C1·C2·C_DIFF '+children.length+'개 펼치기'});
   }
   return list;
-}
-function renderStepPV(host,item){
-  var panel=document.createElement('div');panel.className='step-pv-detail';panel.style.cssText='margin-top:16px;border-top:1px solid var(--line);padding-top:12px';host.appendChild(panel);
-  var pv=item._pv;
-  if(!pv){panel.textContent='PV 설명 없음 · 기존 검사 결과는 재검사가 필요합니다.';return;}
-  var events=(pv.events||[]).filter(function(e){return Number(e.step)===Number(item._aux.step);});
-  panel.innerHTML='<b>p_008_PV 목표 도달 · 원인 후보</b><div class="pv-events" style="margin:8px 0"></div><div class="pv-content"></div>';
-  if(!events.length){panel.querySelector('.pv-content').textContent=pv.reason||'해당 스텝의 PV 설명 모델 없음';return;}
-  var controls=panel.querySelector('.pv-events'),body=panel.querySelector('.pv-content');
-  if(pv.primary_step===item._aux.step){var note=document.createElement('div');note.className='muted';note.textContent='StepTime IF 기여도 기준 대표 이상 스텝'+(events.length>1?' · 스텝 점수는 occurrence 합계이며, 각 occurrence를 별도로 확인하세요.':'');controls.appendChild(note);}
-  events.forEach(function(event,index){var button=document.createElement('button');button.type='button';button.className='btn soft';button.textContent='스텝 '+event.step+' · '+event.occurrence+'번째';button.onclick=function(){controls.querySelectorAll('button').forEach(function(b){b.className='btn soft';});button.className='btn primary';renderPVEvent(body,event);};controls.appendChild(button);if(index===0)button.click();});
-}
-function renderPVEvent(host,event){
-  function fmt(v){return v==null||!isFinite(Number(v))?'—':Number(v).toFixed(3);}
-  function signed(v){return v==null?'—':(v>0?'+':'')+fmt(v);}
-  if(!event.available){host.textContent=event.reason||'해당 이벤트의 PV 설명 없음';return;}
-  var types={pressure:'압력 기준 전환',time:'시간 기준 전환 · 압력 원인 해석 신뢰도가 낮습니다.',uncertain:'전환 기준 불확실'};
-  var statuses={delayed_response:'정상보다 늦게 반응',accelerated_response:'정상보다 빠르게 반응',expected_response_missing:'정상 시 기대되는 반응이 나타나지 않음',normal_response_timing:'정상 반응 시점',normal_pattern_stable:'정상 패턴 변화가 거의 없음',sensor_missing:'원본 센서값 없음'};
-  var candidates=event.candidates||[],active=0;
-  var last=Math.max.apply(null,[event.duration_seconds||0,event.normal_reach_seconds||0,event.actual_reach_seconds||0].concat(event.target_grid_seconds||[],[].concat.apply([],candidates.map(function(c){return c.grid_seconds||[];}))))||1;
-  host.innerHTML='<div class="pv-summary" style="font-size:12px;line-height:1.8">'+esc(event.target_sensor)+' · 목표 '+fmt(event.target_value)+' · '+(event.target_direction==='down'?'하강':'상승')+'<br>정상 도달 '+fmt(event.normal_reach_seconds)+'초 / 실제 '+(event.actual_reach_seconds==null?'목표 미도달':fmt(event.actual_reach_seconds)+'초')+' · '+(event.reach_delay_seconds==null?'지연·단축 미확정':signed(event.reach_delay_seconds)+'초 '+(event.reach_delay_seconds<0?'단축':'지연'))+' · 예측 '+fmt(event.predicted_reach_seconds)+'초<br>'+esc(types[event.transition_type]||event.transition_type||'전환 기준 없음')+' · 전환 confidence '+fmt(event.transition_confidence)+' · 설명 신뢰도 '+esc(event.explanation_confidence||'—')+' · 검증 MAE '+fmt(event.validation_mae_seconds)+'초</div><div class="pv-range" style="margin:8px 0;font-size:12px">공통 경과시간 <input class="pv-from" type="number" min="0" step="any" value="0" style="width:80px"> ~ <input class="pv-to" type="number" min="0" step="any" style="width:80px"> 초 <button type="button" class="btn soft pv-apply">적용</button> <span class="pv-error"></span></div><div class="pv-target"></div><div class="pv-candidates" style="display:flex;flex-direction:column;gap:5px;margin:10px 0"></div><div class="pv-sensor"></div><div class="pv-impact"></div><div class="muted" style="font-size:11px">원인 후보의 추정 기여도입니다. 양수는 도달 지연, 음수는 단축 방향이며 통합 점수에는 더하지 않습니다. 구간 기여도의 합은 전체 센서 기여도와 다를 수 있습니다.</div>';
-  var from=0,to=last;host.querySelector('.pv-to').value=last;
-  function graph(title,times,values,extra,impact){
-    var W=850,H=220,L=65,R=20,T=30,B=38,iw=W-L-R,ih=H-T-B;
-    var nums=(values||[]).concat(extra&&extra.values||[]).filter(function(v){return v!=null&&isFinite(v);});
-    if(extra&&extra.target!=null)nums.push(extra.target);
-    if(impact)nums.push(0);
-    var lo=nums.length?Math.min.apply(null,nums):0,hi=nums.length?Math.max.apply(null,nums):1,pad=(hi-lo)*.1||1;lo-=pad;hi+=pad;
-    function X(t){return L+(t-from)/(to-from)*iw;}function Y(v){return T+(hi-v)/(hi-lo)*ih;}
-    var s='<svg class="pv-plot" viewBox="0 0 '+W+' '+H+'" style="width:100%;max-height:260px" data-x-from="'+from+'" data-x-to="'+to+'"><text x="'+L+'" y="16" font-size="12">'+esc(title)+'</text>';
-    for(var k=0;k<=4;k++){var y=T+k*ih/4;s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y+'" y2="'+y+'" stroke="#e2e8f0"/><text x="'+(L-5)+'" y="'+(y+4)+'" text-anchor="end" font-size="10">'+fmt(hi-k*(hi-lo)/4)+'</text>';var t=from+k*(to-from)/4;s+='<text x="'+X(t)+'" y="'+(H-20)+'" text-anchor="middle" font-size="10">'+fmt(t)+'</text>';}
-    var chosen=candidates[active],win=chosen&&chosen.primary_impact_window;
-    if(win){var a=Math.max(from,win.start_seconds),b=Math.min(to,win.end_seconds);if(b>=a)s+='<rect class="pv-shade" x="'+X(a)+'" y="'+T+'" width="'+Math.max(0,X(b)-X(a))+'" height="'+ih+'" fill="#eab308" opacity=".16"/>';}
-    function trace(ts,vs,color){var points=[];(ts||[]).forEach(function(t,i){if(t>=from&&t<=to&&vs&&vs[i]!=null&&isFinite(vs[i]))points.push(X(t)+','+Y(vs[i]));});return '<polyline fill="none" stroke="'+color+'" stroke-width="1.8" points="'+points.join(' ')+'"/>';}
-    if(impact){s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(0)+'" y2="'+Y(0)+'" stroke="#64748b"/>';impact.forEach(function(w){var a=Math.max(from,w.start_seconds),b=Math.min(to,w.end_seconds),v=w.contribution_seconds;if(b<a)return;s+='<rect class="pv-impact-bar" data-value="'+v+'" x="'+X(a)+'" width="'+Math.max(1,X(b)-X(a)-2)+'" y="'+Math.min(Y(0),Y(v))+'" height="'+Math.max(1,Math.abs(Y(0)-Y(v)))+'" fill="'+(v>=0?'#dc5656':'#3478ce')+'"><title>'+fmt(w.start_seconds)+'~'+fmt(w.end_seconds)+'초: '+signed(v)+'초</title></rect>';});}
-    else{s+=trace(times,values,'#2563eb');if(extra&&extra.values)s+=trace(extra.times,extra.values,'#ea580c');}
-    if(extra&&extra.target!=null)s+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(extra.target)+'" y2="'+Y(extra.target)+'" stroke="#64748b" stroke-dasharray="5 3"/>';
-    (extra&&extra.markers||[]).forEach(function(m){if(m.time==null||m.time<from||m.time>to)return;s+='<line x1="'+X(m.time)+'" x2="'+X(m.time)+'" y1="'+T+'" y2="'+(H-B)+'" stroke="'+m.color+'" stroke-dasharray="3 3"><title>'+esc(m.label)+' '+fmt(m.time)+'초</title></line>';});
-    return s+'<text x="'+(W/2)+'" y="'+(H-3)+'" text-anchor="middle" font-size="10">스텝 시작 후 경과시간 (초)</text></svg>';
-  }
-  function paint(){
-    host.querySelector('.pv-target').innerHTML=graph('p_008_PV · 파랑: 실제 / 점선: 목표값, 주황 정상 도달, 파랑 실제 도달',event.target_grid_seconds,event.actual_target_trajectory,{target:event.target_value,markers:[{time:event.normal_reach_seconds,color:'#ea580c',label:'정상 도달'},{time:event.actual_reach_seconds,color:'#2563eb',label:'실제 도달'}]});
-    var c=candidates[active];
-    host.querySelector('.pv-sensor').innerHTML=c?graph(c.sensor+' · 파랑: 실제 / 주황: 정상 reference',c.grid_seconds,c.actual_trajectory,{times:c.grid_seconds,values:c.normal_trajectory}):'원인 후보 없음';
-    host.querySelector('.pv-impact').innerHTML=c?graph('시간구간 영향 (초) · 빨강: 지연 / 파랑: 단축',[],(c.impact_windows||[]).map(function(w){return w.contribution_seconds;}),null,c.impact_windows||[])+(c.impact_windows&&c.impact_windows.length?'':'<div class="muted">영향구간은 측정 가능한 상위 3개 후보에만 계산합니다.</div>'):'';
-  }
-  candidates.forEach(function(c,i){var b=document.createElement('button');b.type='button';b.className='btn soft';var w=c.primary_impact_window;b.textContent=(i+1)+'위 '+c.sensor+' · 전체 '+signed(c.contribution_seconds)+'초 · '+(statuses[c.response_status]||c.response_status)+(w?' · 주요 영향 '+fmt(w.start_seconds)+'~'+fmt(w.end_seconds)+'초 ('+signed(w.contribution_seconds)+'초)':'');b.onclick=function(){active=i;host.querySelectorAll('.pv-candidates button').forEach(function(el){el.className='btn soft';});b.className='btn primary';paint();};host.querySelector('.pv-candidates').appendChild(b);});
-  host.querySelector('.pv-apply').onclick=function(){var a=Number(host.querySelector('.pv-from').value),b=Number(host.querySelector('.pv-to').value);if(!isFinite(a)||!isFinite(b)||a<0||b<=a){host.querySelector('.pv-error').textContent='0 ≤ 시작 < 종료로 입력하세요.';return;}from=a;to=b;host.querySelector('.pv-error').textContent='';paint();};
-  if(candidates.length)host.querySelector('.pv-candidates button').click();else paint();
 }
 function renderRankedAuxiliary(host,children){
   function value(it){var v=it.ratio!=null?Number(it.ratio):(it.score!=null?Number(it.score):NaN);return v===Infinity||isFinite(v)?v:-Infinity;}
@@ -6833,7 +6701,7 @@ function renderRankedAuxiliary(host,children){
 }
 function renderAuxiliaryDetail(host,item){
   if(item._kind==='step_time_group'){
-    host.innerHTML='<div class="step-time-details" style="border:1px solid var(--line);border-radius:8px;padding:12px"><b>스텝 소요시간 · 점수 상위 5개</b><div class="muted" style="font-size:12px;margin:6px 0">각 스텝을 누르면 소요시간 비교와 PV 원인 후보를 확인합니다. 스텝별 막대는 robust deviation 진단값입니다.</div><div class="step-time-items"></div></div>';
+    host.innerHTML='<div class="step-time-details" style="border:1px solid var(--line);border-radius:8px;padding:12px"><b>스텝 소요시간 · 점수 상위 5개</b><div class="muted" style="font-size:12px;margin:6px 0">각 스텝을 누르면 스텝별 실제 소요시간과 정상 시간 범위를 비교합니다.</div><div class="step-time-items"></div></div>';
     renderRankedAuxiliary(host.querySelector('.step-time-items'),item._children);
     return;
   }
@@ -6845,7 +6713,7 @@ function renderAuxiliaryDetail(host,item){
   var d=item._aux;
   if(item._kind==='step_time'){
     var steps=item._allSteps||[d],max=Math.max.apply(null,steps.map(function(row){return Math.max(row.actual,row.q75);}))||1;
-    host.innerHTML='<b>'+esc(item.sensor)+'</b><div>파랑: 실제 시간 · 주황: 정상 중앙값 · 회색: 정상 IQR</div>'+steps.map(function(row){return '<div style="display:flex;align-items:center;gap:8px"><span>스텝 '+row.step+'</span><svg viewBox="0 0 500 30" style="width:80%;height:30px"><rect x="'+(row.q25/max*480)+'" y="2" width="'+((row.q75-row.q25)/max*480)+'" height="26" fill="#cbd5e1"/><rect x="0" y="10" width="'+(row.actual/max*480)+'" height="10" fill="#2563eb"/><line x1="'+(row.median/max*480)+'" x2="'+(row.median/max*480)+'" y1="0" y2="30" stroke="#ea580c"/><title>실제 '+row.actual+'초 · 중앙값 '+row.median+'초 · IQR '+row.q25+'~'+row.q75+'</title></svg></div>';}).join('')+'<table>'+[['실제 소요시간',d.actual],['정상 중앙값',d.median],['정상 IQR',d.q25+' ~ '+d.q75],['기여도',d.contribution],['Robust deviation',d.robust_deviation]].map(function(r){return '<tr><td>'+r[0]+'</td><td>'+esc(String(r[1]))+'</td></tr>';}).join('')+'</table>';renderStepPV(host,item);return;
+    host.innerHTML='<b>'+esc(item.sensor)+'</b><div>스텝별 소요시간 추이 · 파랑: 실제 시간 · 주황: 정상 중앙값 · 회색: 정상 IQR</div><div class="step-time-trends">'+steps.map(function(row){return '<div class="step-time-row" data-step="'+row.step+'" style="display:flex;align-items:center;gap:8px"><span>스텝 '+row.step+'</span><svg viewBox="0 0 500 30" style="width:80%;height:30px"><rect x="'+(row.q25/max*480)+'" y="2" width="'+((row.q75-row.q25)/max*480)+'" height="26" fill="#cbd5e1"/><rect x="0" y="10" width="'+(row.actual/max*480)+'" height="10" fill="#2563eb"/><line x1="'+(row.median/max*480)+'" x2="'+(row.median/max*480)+'" y1="0" y2="30" stroke="#ea580c"/><title>실제 '+row.actual+'초 · 중앙값 '+row.median+'초 · IQR '+row.q25+'~'+row.q75+'</title></svg></div>';}).join('')+'</div>';return;
   }
   if(!Array.isArray(d.raw)||!d.raw.length||!Array.isArray(d.golden)||!d.golden.length){host.textContent='검사 당시 저장 점수 '+d.ratio+' · 저장된 실제/Golden 파형 없음';return;}
   var raw=d.raw||[],golden=d.golden||[],all=raw.concat(golden),lo=Math.min.apply(null,all),hi=Math.max.apply(null,all),span=hi-lo||1;
