@@ -154,9 +154,9 @@ function mount(data){box.innerHTML='';box._data=data;mountScoreCuration(box,data
    return previousFetch(url,opts);
  };
 
- var apply=rangeB.querySelector('.curation-reference-apply'),pickRequests=0;
+ var apply=rangeB.querySelector('.curation-reference-apply'),pickRequests=0,referenceClears=0;
  rangeB.addEventListener('scatter-reference-pick',()=>pickRequests++);
- rangeB.addEventListener('scatter-reference-clear',()=>{rangeB._referenceSelection.referencePeriod=null;});
+ rangeB.addEventListener('scatter-reference-clear',()=>{referenceClears++;rangeB._referenceSelection.referencePeriod=null;});
  rangeB.querySelector('.curation-reference-pick').click();ok(pickRequests===1,'comparison button requests period selection on scatter');
  ok(!rangeB.querySelector('.curation-reference-from')&&!rangeB.querySelector('.curation-reference-to'),'manual date fields replaced by scatter selection');
  apply.click();await pause();ok(referenceBatches===0&&rangeB.querySelector('.curation-reference-status').textContent.includes('먼저 클릭'),'missing click-selected period rejected before fetch');
@@ -176,7 +176,13 @@ function mount(data){box.innerHTML='';box._data=data;mountScoreCuration(box,data
  includeFirst=true;apply.click();await pause();
  ok(rangeB.querySelector('.curation-auto-sensor[data-sensor="extra0"] summary').textContent===rankBefore,'reference comparison does not change selected ranking');
  rangeB._referenceSelection.referencePeriod={from:referencePoints[1].ts,to:referencePoints[1].ts,points:[referencePoints[1]]};rangeB.dispatchEvent(new CustomEvent('scatter-reference-change'));ok(!rangeB.querySelector('.curation-reference-mean'),'selecting a different period clears old reference mean');apply.click();await pause();
+ var retainedPeriod=rangeB._referenceSelection.referencePeriod,batchesBeforeRedisplay=referenceBatches;
  rangeB.querySelector('.curation-reference-clear').click();ok(!rangeB.querySelector('.curation-reference-mean')&&!rangeB.querySelector('.curation-reference-table'),'reference clear removes extra averages');
+ ok(referenceClears===0&&rangeB._referenceSelection.referencePeriod===retainedPeriod,'comparison hide preserves scatter-selected period');
+ ok(rangeB.querySelector('.curation-reference-period').textContent.includes('2025-12-01'),'selected period remains shown after comparison hide');
+ apply.click();await pause();
+ ok(rangeB.querySelector('.curation-auto-sensor[data-sensor="extra0"] .curation-reference-mean').dataset.mean==='30','show average immediately restores comparison from retained period');
+ ok(referenceBatches===batchesBeforeRedisplay,'redisplay reuses cached measurements');
  window.fetch=previousFetch;
  rangeA.remove();rangeB.remove();changed.remove();
  var merged=curationRangeGroups(points,points.map((p,i)=>({x:i})),[[0,9],[10,20],[5,14]]);

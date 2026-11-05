@@ -4672,7 +4672,7 @@ function mountCurationSupply(box,data,host,points,region){
       }catch(e){if(live()&&request===referenceRequest)referenceStatus.textContent=e.message;}
       finally{if(request===referenceRequest)referenceApply.disabled=false;}
     };
-    comparison.querySelector('.curation-reference-clear').onclick=function(){referenceRequest++;referenceApply.disabled=false;state.referencePoints=null;state.referenceFrom='';state.referenceTo='';referenceStatus.textContent='';box.dispatchEvent(new CustomEvent('scatter-reference-clear'));updateReferencePeriod();if(state.open)render();};
+    comparison.querySelector('.curation-reference-clear').onclick=function(){referenceRequest++;referenceApply.disabled=false;state.referencePoints=null;state.referenceFrom='';state.referenceTo='';referenceStatus.textContent='비교 표시를 해제했습니다. 평균 조회·표시를 누르면 다시 표시됩니다.';updateReferencePeriod();if(state.open)render();};
   }
   // Rebuilding the result must not reset the user's reading position.
   function renderAtSensor(input){
