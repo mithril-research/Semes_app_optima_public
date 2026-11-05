@@ -107,6 +107,25 @@ function state(box){return Array.from(box.querySelectorAll('.sc-scroll')).map(sc
  scroll.scrollLeft=600;await pause();ok(Math.abs(axis.getBoundingClientRect().left-left)<1,'component axis pinned');
  panel('cylinder').querySelector('summary').click();panel('tcn').querySelector('summary').click();await pause();
  ok(Array.from(box.querySelectorAll('.scatter-model-panel')).every(p=>p.open),'all four panels expand at once');
+ var comparisonScrollBefore=box._sharedScatter.scrollRatio;
+ box.querySelector('.scatter-compare-open').click();await pause();
+ var dialog=document.querySelector('.scatter-comparison-dialog');
+ ok(dialog&&dialog.getAttribute('role')==='dialog','comparison opens full-screen dialog');
+ ok(dialog.querySelectorAll('.scatter-comparison-card').length===4,'all selected scatters displayed together');
+ ok(Array.from(dialog.querySelectorAll('.scatter-comparison-card')).every(card=>{var r=card.getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight&&r.left>=0&&r.right<=innerWidth;}),'all four cards fit viewport without vertical scrolling');
+ ok(!dialog.querySelector('.scatter-range-analyze')&&!dialog.querySelector('.sensor-scatter-parts')&&!dialog.querySelector('.sc-size'),'comparison shows plots without analysis and sensor control clutter');
+ ok(dialog.querySelectorAll('.sc-fixed-y-axis').length===4,'comparison retains each fixed score axis');
+ ok(Array.from(dialog.querySelectorAll('.sc-scroll')).every(el=>el.scrollWidth<=el.clientWidth+2),'comparison fits complete time range horizontally');
+ ok(Array.from(dialog.querySelectorAll('.scatter-comparison-card')).every(card=>{var chart=card.lastElementChild;return chart.scrollHeight<=chart.clientHeight+2;}),'each plot fits available card height');
+ var comparePicks=dialog.querySelectorAll('.scatter-comparison-picks input');
+ comparePicks[2].click();comparePicks[3].click();await pause();
+ ok(dialog.querySelectorAll('.scatter-comparison-card').length===2,'comparison selection can be narrowed without changing main selection');
+ dialog.style.right='auto';dialog.style.bottom='auto';dialog.style.width='720px';dialog.style.height='480px';await new Promise(r=>setTimeout(r,100));await pause();
+ ok(Array.from(dialog.querySelectorAll('.sc-scroll')).every(el=>el.scrollWidth<=el.clientWidth+2),'resized comparison continues fitting plots to screen');
+ dialog.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+ ok(!document.querySelector('.scatter-comparison-dialog'),'escape closes comparison');
+ ok(Array.from(box.querySelectorAll('.scatter-model-panel')).every(p=>p.open)&&box._sharedScatter.scrollRatio===comparisonScrollBefore,'closing comparison retains main panel and scroll state');
+
  ok(chart('integrated').querySelectorAll('.scatter-range-analyze').length===1,'integrated scatter keeps range analysis');
  ok(['tcn','step_time','cylinder'].every(mode=>!chart(mode).querySelector('.scatter-range-analyze')),'model-only scatters omit range analysis');
  var scale=chart('tcn').querySelector('.sc-scale');scale.value='60m';scale.dispatchEvent(new Event('change'));await pause();
@@ -141,6 +160,13 @@ function state(box){return Array.from(box.querySelectorAll('.sc-scroll')).map(sc
  chart('cylinder').querySelector('.sc-size').click();await pause();
  panel('cylinder').querySelector('summary').click();await pause();
  ok(!panel('cylinder').open&&panel('step_time').open&&panel('tcn').open,'closing one leaves others open');
+ box.querySelector('.scatter-compare-open').click();await pause();
+ var subsetDialog=document.querySelector('.scatter-comparison-dialog');
+ ok(subsetDialog.querySelectorAll('.scatter-comparison-card').length===3&&!subsetDialog.querySelector('.scatter-comparison-card[data-score-mode="cylinder"]'),'comparison initially includes only expanded main scatters');
+ subsetDialog.querySelectorAll('.scatter-comparison-picks input').forEach(input=>{if(input.checked)input.click();});await pause();
+ ok(!subsetDialog.querySelector('.scatter-comparison-card')&&subsetDialog.textContent.includes('비교할 산점도를 선택하세요'),'comparison handles empty selection');
+ subsetDialog.querySelector('.scatter-comparison-close').click();
+
  var sensorScale=chart('integrated').querySelector('.sensor-scale');sensorScale.value='30m';sensorScale.dispatchEvent(new Event('change'));await pause();
  ok(chart('cylinder')._opts.scaleMin==='30m','closed panel receives latest shared scale');
 

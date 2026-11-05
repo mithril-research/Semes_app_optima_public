@@ -3263,6 +3263,7 @@ function pinScatterYAxis(scroll){
 }
 
 function mountSensorScatter(box,pts,geom){
+  if(box._comparison)return;
   if(box.id!=='drillTrendChart'&&!(box._modelChart&&box._scoreMode==='integrated'))return;
   var host=document.createElement('div'); host.className='sensor-scatter-parts';box.appendChild(host);
   var controller=new AbortController();box._sensorAbort=controller;
@@ -4833,6 +4834,7 @@ function curationRangeGroups(points,positions,ranges){
   return curationDragGroups(points,selected).map(function(group){return Object.assign({},group,{displayRows:selected.filter(function(p){return Number.isFinite(p.ratio)&&isFinite(Date.parse(p.ts));}),rangeNumber:1,rangeCount:ranges.length,timeSegments:timeSegments,selectionRange:ranges.map(function(range){return range.slice();}).sort(function(a,b){return a[0]-b[0]||a[1]-b[1];}),lot:'선택 구간 통합'});});
 }
 function mountScatterDrag(box,data,points,positions){
+  if(box._comparison)return;
   if(box.id!=='drillTrendChart'&&(!box._modelChart||box._scoreMode!=='integrated'))return;
   if(box._dragAnalysis&&box._dragAnalysis._curationSupplyAbort)box._dragAnalysis._curationSupplyAbort.abort();
   var scroll=box.querySelector('.sc-scroll'),svg=scroll&&scroll.querySelector('svg');if(!svg)return;
@@ -4936,6 +4938,63 @@ function setModelScatterScale(chart,scale){
   });
 }
 
+function openScatterComparison(owner){
+  if(owner._scatterComparison){owner._scatterComparison.focus();return;}
+  var models=[['integrated','종합'],['tcn','TCN'],['step_time','스텝 소요시간'],['cylinder','실린더']];
+  var previousFocus=document.activeElement,previousOverflow=document.documentElement.style.overflow;
+  var dialog=document.createElement('div');dialog.className='scatter-comparison-dialog';dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-label','선택 산점도 한눈에 비교');dialog.tabIndex=-1;
+  dialog.style.cssText='position:fixed;inset:0;z-index:20000;background:var(--bg,#f5f7fa);color:var(--txt,#172033);padding:12px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px;overflow:hidden';
+  var header=document.createElement('div');header.style.cssText='display:flex;gap:12px;align-items:center;flex-wrap:wrap;flex-shrink:0';
+  header.innerHTML='<strong style="font-size:17px">선택 산점도 한눈에 비교</strong><span class="scatter-comparison-picks" style="display:flex;gap:12px;flex-wrap:wrap"></span><button type="button" class="btn soft scatter-comparison-close" style="margin-left:auto">비교 닫기 (Esc)</button>';
+  var body=document.createElement('div');body.className='scatter-comparison-grid';body.style.cssText='display:grid;gap:10px;flex:1;min-height:0;min-width:0;overflow:hidden';
+  var footer=document.createElement('div');footer.style.cssText='font-size:11px;flex-shrink:0;max-height:42px;overflow:hidden';
+  dialog.appendChild(header);dialog.appendChild(body);dialog.appendChild(footer);document.body.appendChild(dialog);document.documentElement.style.overflow='hidden';
+  var selected={},lastSignature='',frame=null,resize=null,closed=false;
+  models.forEach(function(model){
+    var entry=owner._modelPanels[model[0]],label=document.createElement('label'),input=document.createElement('input');
+    selected[model[0]]=!!(entry&&entry.chart.parentNode&&entry.chart.parentNode.open);input.type='checkbox';input.checked=selected[model[0]];input.value=model[0];
+    label.style.cssText='display:inline-flex;gap:4px;align-items:center;font-size:13px';label.appendChild(input);label.appendChild(document.createTextNode(model[1]));header.querySelector('.scatter-comparison-picks').appendChild(label);
+    input.onchange=function(){selected[model[0]]=input.checked;render();};
+  });
+  function close(){
+    if(closed)return;closed=true;if(resize)resize.disconnect();if(frame!==null)cancelAnimationFrame(frame);window.removeEventListener('resize',schedule);
+    dialog.remove();document.documentElement.style.overflow=previousOverflow;owner._scatterComparison=null;
+    if(previousFocus&&previousFocus.isConnected&&previousFocus.getClientRects().length)previousFocus.focus({preventScroll:true});
+  }
+  function render(){
+    if(closed)return;
+    var chosen=models.filter(function(model){return selected[model[0]];}),signature=JSON.stringify([body.clientWidth,body.clientHeight,chosen]);
+    if(signature===lastSignature)return;lastSignature=signature;body.innerHTML='';
+    body.style.gridTemplateColumns=chosen.length>1?'repeat(2,minmax(0,1fr))':'minmax(0,1fr)';body.style.gridTemplateRows='repeat('+Math.max(1,Math.ceil(chosen.length/2))+',minmax(0,1fr))';
+    if(!chosen.length){body.textContent='비교할 산점도를 선택하세요.';footer.textContent='';return;}
+    var data=Object.assign({},owner._data,{points:(owner._data.points||[]).slice()}),legend=null;
+    chosen.forEach(function(model){
+      var card=document.createElement('section');card.className='scatter-comparison-card';card.dataset.scoreMode=model[0];card.style.cssText='display:flex;flex-direction:column;gap:4px;padding:8px;border:1px solid var(--line,#dbe1e8);border-radius:10px;background:var(--panel,#fff);min-width:0;min-height:0;overflow:hidden';
+      var heading=document.createElement('h3');heading.style.cssText='margin:0;font-size:14px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';heading.textContent=model[1]+' 산점도';
+      var chart=document.createElement('div');chart.style.cssText='flex:1;min-width:0;min-height:0;overflow:hidden';chart._comparison=true;chart._modelChart=true;chart._scoreMode=model[0];chart._scatterExpanded=true;
+      card.appendChild(heading);card.appendChild(chart);body.appendChild(card);
+      drawScatter(chart,data,Object.assign({},owner._opts));heading.textContent+=' · '+(chart._comparisonPointCount||0)+'매';if(!legend&&chart._comparisonLegend)legend=chart._comparisonLegend;
+      chart.addEventListener('click',function(event){if(event.target.closest('g[onclick]'))close();});
+    });
+    footer.textContent='전체 조회기간 · Y축 0~3 (3 초과는 상단 표시) · 점 클릭 시 상세 진단';
+    if(legend){legend.style.margin='2px 0 0';legend.style.fontSize='11px';footer.appendChild(legend);}
+  }
+  function schedule(){if(frame!==null)return;frame=requestAnimationFrame(function(){frame=null;render();});}
+  header.querySelector('.scatter-comparison-close').onclick=close;
+  dialog.addEventListener('keydown',function(event){
+    if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();}
+    if(event.key==='Tab'){
+      var items=Array.from(dialog.querySelectorAll('button:not([disabled]),input:not([disabled]),[tabindex="0"]')).filter(function(el){return el.getClientRects().length;});
+      if(!items.length)return;var first=items[0],last=items[items.length-1];
+      if(event.shiftKey&&(document.activeElement===first||document.activeElement===dialog)){event.preventDefault();last.focus();}
+      else if(!event.shiftKey&&(document.activeElement===last||document.activeElement===dialog)){event.preventDefault();first.focus();}
+    }
+  });
+  owner._scatterComparison={focus:function(){dialog.focus();},refresh:function(){lastSignature='';render();},close:close};
+  if(window.ResizeObserver){resize=new ResizeObserver(schedule);resize.observe(body);}window.addEventListener('resize',schedule);
+  render();header.querySelector('.scatter-comparison-close').focus({preventScroll:true});
+}
+
 function mountScatterModes(box,d,opts){
   if(box._dragAnalysis&&box._dragAnalysis._curationSupplyAbort)box._dragAnalysis._curationSupplyAbort.abort();
   if(box._curationSupplyAbort)box._curationSupplyAbort.abort();
@@ -4966,6 +5025,7 @@ function mountScatterModes(box,d,opts){
   });
   Object.keys(states).forEach(function(mode){var chart=states[mode].chart;if(chart._sensorAbort)chart._sensorAbort.abort();if(chart._dragAnalysis&&chart._dragAnalysis._curationSupplyAbort)chart._dragAnalysis._curationSupplyAbort.abort();});
   box.innerHTML='';
+  var compareToolbar=document.createElement('div');compareToolbar.style.cssText='display:flex;justify-content:flex-end;margin:8px 0';compareToolbar.innerHTML='<button type="button" class="btn primary scatter-compare-open">선택 산점도 한눈에 비교</button>';compareToolbar.querySelector('button').onclick=function(){openScatterComparison(box);};box.appendChild(compareToolbar);
   [['integrated','종합'],['tcn','TCN'],['step_time','스텝 소요시간'],['cylinder','실린더']].forEach(function(item){
     var entry=states[item[0]];
     if(!entry){var chart=document.createElement('div');chart.className='scatter-mode-content';chart.style.cssText='padding-top:8px';chart._modelChart=true;chart._scoreMode=item[0];chart._fitWidth=box._fitWidth;chart._scatterExpanded=box._scatterExpanded;entry=states[item[0]]={open:item[0]==='integrated',chart:chart};}
@@ -4980,6 +5040,7 @@ function mountScatterModes(box,d,opts){
     renderPanel();
   });
   syncTrendAnalysis(box,d.points||[],{H:280});
+  if(box._scatterComparison)box._scatterComparison.refresh();
 }
 function openScatterWafer(wid,date,overview,mode){
   INTEGRATED_SCORE_MODE=mode==='integrated'?'integrated':'original';
@@ -5005,6 +5066,7 @@ function drawScatterPlot(box,d,opts){
   if(scoreMode==='integrated')pts=pts.map(function(p){return integratedPoint(p,!!d._stepKey,(d.rule||{}).bands);});
   else if(scoreMode==='step_time'||scoreMode==='cylinder')pts=pts.map(function(p){return scatterModelPoint(p,scoreMode,(d.rule||{}).bands);});
   pts=pts.filter(function(p){return p.ratio!=null;});
+  if(box._comparison)box._comparisonPointCount=pts.length;
   pts.sort(function(a,b){return String(a.ts||'').localeCompare(String(b.ts||''));});   // 끝시각 오름차순
   // ── ★ 챔버 보정(σ) 모드: DSV 마다 세팅(히터 목표값 등)이 달라 복원오차의 기준선(offset)·
   //   진폭이 챔버별로 다르다 → 챔버별 중앙값(median)·MAD 로 표준화해 y축을 '그 챔버의
@@ -5040,6 +5102,7 @@ function drawScatterPlot(box,d,opts){
     return; }
   var compact=(box.id==='drillTrendChart'||box._modelChart)&&box._scatterExpanded===false;
   var H=compact?150:280,pad={l:50,r:20,t:26,b:38}, ih=H-pad.t-pad.b;
+  if(box._comparison){H=Math.max(96,Math.floor(box.clientHeight)-22);ih=H-pad.t-pad.b;}
   var n=pts.length, ys=pts.map(function(p){return p.ratio;}).filter(Number.isFinite);
   // Display scores above 3 at the top while preserving their actual values.
   var ymax=3, ymin=0;
@@ -5076,6 +5139,7 @@ function drawScatterPlot(box,d,opts){
   }
   var fit=box._fitWidth!==false;
   if(compact||fit){W=Math.max(320,Math.floor(box.clientWidth-14));needScroll=false;}
+  if(box._comparison){W=Math.max(160,Math.floor(box.clientWidth)-14);needScroll=false;}
   var iw=W-pad.l-pad.r;
   var x=useTime
     ? function(i){ var t=times[i]; if(t==null) return pad.l+iw/2; return pad.l+iw*(t-tmin)/((tmax-tmin)||1); }
@@ -5238,6 +5302,10 @@ function drawScatterPlot(box,d,opts){
     }
   }
   box.querySelectorAll('.opt-wafer-point').forEach(function(point){point.addEventListener('keydown',function(event){if(event.key==='Enter'||event.key===' '){event.preventDefault();point.dispatchEvent(new MouseEvent('click',{bubbles:true}));}});});
+  if(box._comparison){
+    var comparisonScroll=box.querySelector('.sc-scroll'),comparisonLegend=box.querySelector('.sc-legend');
+    box._comparisonLegend=comparisonLegend?comparisonLegend.cloneNode(true):null;box.replaceChildren(comparisonScroll);pinScatterYAxis(comparisonScroll);return;
+  }
   if(scoreMode==='step_time'||scoreMode==='cylinder'){
     var missing=(d.points||[]).filter(function(p){var c=(p.score_components||{})[scoreMode];return !c||!c.available||!componentHasRatio(c);});
     if(missing.length){var notice=document.createElement('div');notice.className='muted scatter-model-missing';notice.textContent='점수 미적용 '+missing.length+'매 · '+scatterModelMissing({points:missing},scoreMode);box.prepend(notice);}
