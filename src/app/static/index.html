@@ -4536,7 +4536,7 @@ function renderCurationSupplyGraph(host,context,values,temperature,pressure,wide
   function markerColor(f,metric){var palette=cylinderColors[f==='temperature'?temperature:pressure];return palette?palette[metric]:colors[f];}
   fields.forEach(function(f){var a=values.flatMap(function(v){return f==='seconds'?[v[f]]:metrics.map(function(m){return metricValue(v,f,m);}).concat(cylinderDifference&&f===(temperature?'temperature':'pressure')?enabledCylinderSeries.map(function(series){return cylinderValue(v,series);}):[]);}).filter(function(v){return typeof v==='number'&&isFinite(v);}),lo=0,hi=1;if(a.length){lo=a.reduce(function(a,b){return Math.min(a,b);},Infinity);hi=a.reduce(function(a,b){return Math.max(a,b);},-Infinity);var pad=Math.max((hi-lo)*.1,Math.abs(hi)*.01,.001);lo=f==='seconds'?Math.max(0,lo-pad):lo-pad;hi=hi+pad;}scales[f]={lo:lo,hi:hi,available:a.length};stats[f]=context.lot?curationSupplyStats(values.filter(function(v,i){return context.roles[i]==='normal';}).concat(values.filter(function(v,i){return context.roles[i]==='selected';})),f,normal):curationSupplyStats(values,f,normal);});
   if(context.selectedMean)fields.forEach(function(f){var included=values.filter(function(v,i){return dispFirstOn()||!points[i].lot_first;});stats[f]=curationSupplyStats(included,f,included.length);stats[f].selected=stats[f].normal;});
-  var referenceStats={};fields.forEach(function(f){referenceStats[f]=curationSupplyStats(referenceValues,f,referenceValues.length).normal;var mean=referenceStats[f].mean;if(reference&&mean!==null){var scale=scales[f],pad=Math.max(Math.abs(mean)*.01,.001);scale.lo=Math.min(scale.lo,mean-pad);scale.hi=Math.max(scale.hi,mean+pad);scale.available++;}});
+  var referenceStats={};fields.forEach(function(f){referenceStats[f]=curationSupplyStats(referenceValues,f,referenceValues.length).normal;var mean=referenceStats[f].mean;if(reference&&f!=='seconds'&&mean!==null){var scale=scales[f],pad=Math.max(Math.abs(mean)*.01,.001);scale.lo=Math.min(scale.lo,mean-pad);scale.hi=Math.max(scale.hi,mean+pad);scale.available++;}});
   var specs=[{key:'x',label:'X축 기간',lo:autoX0,hi:autoX1}];
   fields.forEach(function(f){if(f!=='seconds'&&!(f==='temperature'?temperature:pressure))return;specs.push({key:f,label:f==='seconds'?'Y축 소요시간(초)':'Y축 센서값',lo:scales[f].lo,hi:scales[f].hi,floor:f==='seconds'?0:null});var r=curationAxisRange(axisState,f,scales[f].lo,scales[f].hi);scales[f].lo=r.lo;scales[f].hi=r.hi;});
   function y(f,v){var s=scales[f];return T+(1-(v-s.lo)/(s.hi-s.lo))*ih;}
@@ -4572,7 +4572,7 @@ function renderCurationSupplyGraph(host,context,values,temperature,pressure,wide
   }
   svg+='<g class="curation-viewport-marks"></g>';
   fields.forEach(function(f){if(f!=='seconds'&&metrics.indexOf('mean')<0)return;var v=stats[f].normal.mean;if(v!==null)svg+='<line x1="0" x2="'+W+'" y1="'+y(f,v)+'" y2="'+y(f,v)+'" stroke="'+colors[f]+'" stroke-dasharray="5 4" opacity=".7"><title>직전 정상 평균 '+fmt(v)+'</title></line>';});
-  if(reference)fields.forEach(function(f){if(f!=='seconds'&&metrics.indexOf('mean')<0)return;var st=referenceStats[f];if(st.mean!==null)svg+='<line class="curation-reference-mean" data-field="'+f+'" data-mean="'+st.mean+'" x1="0" x2="'+W+'" y1="'+y(f,st.mean)+'" y2="'+y(f,st.mean)+'" stroke="#7c3aed" stroke-width="2" stroke-dasharray="9 3 2 3"><title>'+esc('조회기간 평균 '+fmt(st.mean)+' · '+st.count+'매 · '+reference.from+' ~ '+reference.to)+'</title></line>';});
+  if(reference)fields.forEach(function(f){if(f==='seconds'||metrics.indexOf('mean')<0)return;var st=referenceStats[f];if(st.mean!==null)svg+='<line class="curation-reference-mean" data-field="'+f+'" data-mean="'+st.mean+'" x1="0" x2="'+W+'" y1="'+y(f,st.mean)+'" y2="'+y(f,st.mean)+'" stroke="#7c3aed" stroke-width="2" stroke-dasharray="9 3 2 3"><title>'+esc('조회기간 평균 '+fmt(st.mean)+' · '+st.count+'매 · '+reference.from+' ~ '+reference.to)+'</title></line>';});
   svg+='</g>';
   if(compressed){segmentSpans.forEach(function(seg,i){var left=12+seg.offset/totalSpan*(W-24),width=seg.span/totalSpan*(W-24);svg+=curationTimeTicks(seg.start,seg.start+seg.span,left,width,H,layout.unit);if(i)svg+='<line class="curation-range-break" x1="'+left+'" x2="'+left+'" y1="'+T+'" y2="'+(H-B)+'" stroke="#94a3b8" stroke-dasharray="3 3"><title>선택하지 않은 시간 구간 생략</title></line>';});}
   else svg+=curationTimeTicks(t0,t1,12,W-24,H,layout.unit);
@@ -4592,7 +4592,7 @@ function renderCurationSupplyGraph(host,context,values,temperature,pressure,wide
   if(context.outlierIndices&&metrics.indexOf('mean')>=0)host.insertAdjacentHTML('afterbegin','<div class="opt-process-alert">◎ 평균 이탈 감지 · 빨간 테두리</div>');
   if(context.selectedMean)host.innerHTML=host.innerHTML.replace(/이전 정상 LOT 평균/g,'선택 영역 평균').replace(/앞 LOT 평균/g,'선택 영역 평균').replace(/직전 정상 평균/g,'선택 영역 평균');
   if(reference){
-    host.insertAdjacentHTML('beforeend','<div class="curation-reference-summary" style="font-size:12px;margin:10px 0;color:#7c3aed">━ 조회기간 평균 · '+esc(reference.from.replace('T',' ')+' ~ '+reference.to.replace('T',' '))+' · 같은 설비·챔버·레시피 · LOT 첫 장 '+(dispFirstOn()?'포함':'제외')+'</div><table class="curation-reference-table" style="width:100%;font-size:12px"><thead><tr><th>항목</th><th>조회기간 평균 (유효 매수)</th><th>선택구간 평균 − 조회기간 평균</th></tr></thead><tbody>'+fields.filter(function(f){return labels[f];}).map(function(f){var st=referenceStats[f],selected=stats[f].selected.mean,delta=selected===null||st.mean===null?null:selected-st.mean;return '<tr>'+[labels[f],fmt(st.mean)+' ('+st.count+'매)',delta===null?'비교 불가':(delta>0?'+':'')+fmt(delta)].map(function(v){return '<td>'+esc(v)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table>');
+    host.insertAdjacentHTML('beforeend','<div class="curation-reference-summary" style="font-size:12px;margin:10px 0;color:#7c3aed">보라색 점선: 센서 조회기간 평균 · 소요시간 평균은 아래 표 · '+esc(reference.from.replace('T',' ')+' ~ '+reference.to.replace('T',' '))+' · 같은 설비·챔버·레시피 · LOT 첫 장 '+(dispFirstOn()?'포함':'제외')+'</div><table class="curation-reference-table" style="width:100%;font-size:12px"><thead><tr><th>항목</th><th>조회기간 평균 (유효 매수)</th><th>선택구간 평균 − 조회기간 평균</th></tr></thead><tbody>'+fields.filter(function(f){return labels[f];}).map(function(f){var st=referenceStats[f],selected=stats[f].selected.mean,delta=selected===null||st.mean===null?null:selected-st.mean;return '<tr>'+[labels[f],fmt(st.mean)+' ('+st.count+'매)',delta===null?'비교 불가':(delta>0?'+':'')+fmt(delta)].map(function(v){return '<td>'+esc(v)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table>');
   }
   if((temperature||pressure)&&!cylinderDifference){var picks=document.createElement('div');picks.className='curation-stat-picks';picks.style.cssText='display:flex;gap:12px;margin:8px 0;font-size:12px';[['mean','● 평균'],['min','▼ 최솟값'],['max','■ 최댓값']].forEach(function(pair){var label=document.createElement('label'),check=document.createElement('input');label.style.color=markerColor(temperature?'temperature':'pressure',pair[0]);check.type='checkbox';check.dataset.metric=pair[0];check.checked=metrics.indexOf(pair[0])>=0;check.onchange=function(){axisState._metrics=Array.from(picks.querySelectorAll('input:checked')).map(function(e){return e.dataset.metric;});renderCurationSupplyGraph(host,context,values,temperature,pressure,wide,axisState);};label.appendChild(check);label.appendChild(document.createTextNode(pair[1]));picks.appendChild(label);});host.prepend(picks);}
   if(cylinderDifference){var picks=document.createElement('div');picks.className='curation-cylinder-picks';picks.style.cssText='display:flex;gap:12px;flex-wrap:wrap;margin:8px 0;font-size:12px';cylinderSeries.forEach(function(series){var label=document.createElement('label'),check=document.createElement('input');label.style.color=series.color;check.type='checkbox';check.dataset.series=series.key;check.checked=enabledCylinderSeries.indexOf(series)>=0;check.onchange=function(){axisState._cylinderSeries=Array.from(picks.querySelectorAll('input:checked')).map(function(e){return e.dataset.series;});renderCurationSupplyGraph(host,context,values,temperature,pressure,wide,axisState);};label.appendChild(check);label.appendChild(document.createTextNode(({mean:'● ',min:'▼ ',max:'■ '}[series.metric])+series.label));picks.appendChild(label);});host.prepend(picks);}
@@ -4635,20 +4635,28 @@ function mountCurationSupply(box,data,host,points,region){
   }
   if(region.selectedMean){
     var comparison=document.createElement('div');comparison.className='curation-reference-controls';comparison.style.cssText='font-size:12px;margin:10px 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center';
-    comparison.innerHTML='<b>조회기간 평균 비교</b><label>시작 <input class="curation-reference-from" type="datetime-local" step="1" required></label><label>종료 <input class="curation-reference-to" type="datetime-local" step="1" required></label><button type="button" class="btn primary curation-reference-apply">평균 조회·표시</button><button type="button" class="btn soft curation-reference-clear">비교 해제</button><span class="curation-reference-status" role="status"></span>';
+    comparison.innerHTML='<b>조회기간 평균 비교</b><button type="button" class="btn soft curation-reference-pick">산점도에서 기간 선택</button><output class="curation-reference-period"></output><button type="button" class="btn primary curation-reference-apply">평균 조회·표시</button><button type="button" class="btn soft curation-reference-clear">비교 해제</button><span class="curation-reference-status" role="status"></span>';
     controls.before(comparison);
-    var referenceFrom=comparison.querySelector('.curation-reference-from'),referenceTo=comparison.querySelector('.curation-reference-to'),referenceApply=comparison.querySelector('.curation-reference-apply'),referenceStatus=comparison.querySelector('.curation-reference-status'),referenceRequest=0;
-    referenceFrom.value=state.referenceFrom||'';referenceTo.value=state.referenceTo||'';
+    var referencePeriod=comparison.querySelector('.curation-reference-period'),referenceApply=comparison.querySelector('.curation-reference-apply'),referenceStatus=comparison.querySelector('.curation-reference-status'),referenceRequest=0,referenceSelectionKey;
+    function updateReferencePeriod(){
+      var period=box._referenceSelection&&box._referenceSelection.referencePeriod;
+      referencePeriod.textContent=period?scoreRegionTime(period.from)+' ~ '+scoreRegionTime(period.to):'종합 산점도 X축에서 시작·끝을 클릭하세요.';
+      var selectionKey=period?JSON.stringify([period.from,period.to]):'';
+      if((referenceSelectionKey!==undefined&&referenceSelectionKey!==selectionKey)||(state.referencePoints&&(!period||period.from!==state.referenceFrom||period.to!==state.referenceTo))){
+        referenceRequest++;referenceApply.disabled=false;state.referencePoints=null;referenceStatus.textContent='기간이 변경되었습니다. 평균 조회·표시를 눌러주세요.';if(state.open)render();
+      }
+      referenceSelectionKey=selectionKey;
+    }
+    comparison.querySelector('.curation-reference-pick').onclick=function(){box.dispatchEvent(new CustomEvent('scatter-reference-pick'));};
+    box.addEventListener('scatter-reference-change',updateReferencePeriod,{signal:controller.signal});updateReferencePeriod();
     referenceApply.onclick=async function(){
-      var from=referenceFrom.value,to=referenceTo.value,start=Date.parse(from),end=Date.parse(to);
-      if(!referenceFrom.validity.valid||!referenceTo.validity.valid||!isFinite(start)||!isFinite(end)||start>end){referenceStatus.textContent='조회 시작·종료시각을 올바르게 입력하세요.';return;}
+      var period=box._referenceSelection&&box._referenceSelection.referencePeriod;
+      if(!period){referenceStatus.textContent='종합 산점도 X축에서 평균 비교기간의 시작·끝을 먼저 클릭하세요.';return;}
+      var from=period.from,to=period.to,start=Date.parse(from),end=Date.parse(to);
       var request=++referenceRequest;referenceApply.disabled=true;referenceStatus.textContent='조회기간 자료 조회 중…';
       try{
-        var response=await fetch('/api/scatter?limit=1000000&chamber=all&recipe=all&start='+encodeURIComponent(from)+'&end='+encodeURIComponent(to),{signal:controller.signal});
-        if(!response.ok)throw Error('조회기간 웨이퍼 조회 실패');var result=await response.json();
-        if(!live()||request!==referenceRequest)return;if(result.model_id!==data.model_id)throw Error('모델이 변경되었습니다. 산점도를 다시 조회하세요.');
         var scope=new Set(context.points.map(function(p){return JSON.stringify([sensorTrendEquipment(p),p.chamber,p.mean_recipe||p.recipe]);})),seen=new Set();
-        var referencePoints=(result.points||[]).filter(function(p){var time=Date.parse(p.ts),id=key(p);if(seen.has(id)||!isFinite(time)||time<start||time>end||!scope.has(JSON.stringify([sensorTrendEquipment(p),p.chamber,p.mean_recipe||p.recipe])))return false;seen.add(id);return true;});
+        var referencePoints=(period.points||[]).filter(function(p){var time=Date.parse(p.ts),id=key(p);if(seen.has(id)||!isFinite(time)||time<start||time>end||!scope.has(JSON.stringify([sensorTrendEquipment(p),p.chamber,p.mean_recipe||p.recipe])))return false;seen.add(id);return true;});
         if(!referencePoints.length)throw Error('같은 설비·챔버·레시피의 조회기간 자료가 없습니다.');
         var pending=referencePoints.filter(function(p){var row=cache[key(p)];return !row||!row.sensor_metrics||!row.step_timing||!row.valve_phases||row.valve_phases.version!==2;});
         for(var i=0;i<pending.length;i+=64){
@@ -4659,11 +4667,11 @@ function mountCurationSupply(box,data,host,points,region){
           if(batch.some(function(p){return !cache[p.date+'/'+p.wid];}))throw Error('일부 웨이퍼 자료가 누락되었습니다. 다시 조회하세요.');
         }
         state.referenceFrom=from;state.referenceTo=to;state.referencePoints=referencePoints;
-        referenceStatus.textContent='조회 완료 · '+referencePoints.length+'매 · 보라색 점선: 조회기간 평균';if(state.open)render();
+        referenceStatus.textContent='조회 완료 · '+referencePoints.length+'매 · 보라색 점선: 센서 평균';if(state.open)render();
       }catch(e){if(live()&&request===referenceRequest)referenceStatus.textContent=e.message;}
       finally{if(request===referenceRequest)referenceApply.disabled=false;}
     };
-    comparison.querySelector('.curation-reference-clear').onclick=function(){referenceRequest++;referenceApply.disabled=false;state.referencePoints=null;state.referenceFrom='';state.referenceTo='';referenceFrom.value='';referenceTo.value='';referenceStatus.textContent='';if(state.open)render();};
+    comparison.querySelector('.curation-reference-clear').onclick=function(){referenceRequest++;referenceApply.disabled=false;state.referencePoints=null;state.referenceFrom='';state.referenceTo='';referenceStatus.textContent='';box.dispatchEvent(new CustomEvent('scatter-reference-clear'));updateReferencePeriod();if(state.open)render();};
   }
   // Rebuilding the result must not reset the user's reading position.
   function renderAtSensor(input){
@@ -4828,13 +4836,25 @@ function mountScatterDrag(box,data,points,positions){
   if(box.id!=='drillTrendChart'&&(!box._modelChart||box._scoreMode!=='integrated'))return;
   if(box._dragAnalysis&&box._dragAnalysis._curationSupplyAbort)box._dragAnalysis._curationSupplyAbort.abort();
   var scroll=box.querySelector('.sc-scroll'),svg=scroll&&scroll.querySelector('svg');if(!svg)return;
-  var controls=document.createElement('div');controls.style.cssText='margin:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap';controls.innerHTML='<b>구간 분석</b><button class="btn primary scatter-range-analyze">선택 구간 분석</button><button class="btn soft scatter-drag-clear">전체 구간 해제</button><span class="muted">X축에서 시작·끝 클릭 · 여러 구간 통합 분석</span><span class="scatter-range-status" role="status"></span><div class="scatter-range-list" style="width:100%;display:flex;gap:8px;flex-wrap:wrap"></div>';scroll.before(controls);
+  var controls=document.createElement('div');controls.style.cssText='margin:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap';controls.innerHTML='<label>선택 대상 <select class="scatter-pick-mode"><option value="analysis">분석 구간</option><option value="reference">평균 비교기간</option></select></label><b>구간 분석</b><button class="btn primary scatter-range-analyze">선택 구간 분석</button><button class="btn soft scatter-drag-clear">전체 구간 해제</button><span class="muted">X축에서 시작·끝 클릭 · 여러 구간 통합 분석</span><span class="scatter-range-status" role="status"></span><div class="scatter-range-list" style="width:100%;display:flex;gap:8px;flex-wrap:wrap"></div>';scroll.before(controls);
   var result=document.createElement('section');result.className='scatter-drag-result';scroll.after(result);box._dragAnalysis=result;result._data=data;
   var source=data._stepSource||data,membership=JSON.stringify(points.map(function(p){return [sensorTrendEquipment(p),p.chamber,p.recipe,p.wafer_id,p.ts];}));
   var saved=box._curationRangeSelection;
   if(!saved||saved.source!==source||saved.membership!==membership)saved=box._curationRangeSelection={source:source,membership:membership,ranges:[],analyzed:false};
   var start=null,H=svg.viewBox.baseVal.height,W=svg.viewBox.baseVal.width,status=controls.querySelector('.scatter-range-status'),list=controls.querySelector('.scatter-range-list');
   var ranges=saved.ranges.map(function(r){return r.map(function(x){return 50+x*Math.max(1,W-70);});});
+  var referenceRange=saved.referenceRange?saved.referenceRange.map(function(x){return 50+x*Math.max(1,W-70);}):null;
+  var pickMode=controls.querySelector('.scatter-pick-mode');pickMode.value=saved.pickMode||'analysis';result._referenceSelection=saved;
+  pickMode.onchange=function(){saved.pickMode=pickMode.value;start=null;paint();};
+  result.addEventListener('scatter-reference-pick',function(){pickMode.value='reference';pickMode.onchange();scroll.scrollIntoView({behavior:'smooth',block:'center'});pickMode.focus({preventScroll:true});});
+  result.addEventListener('scatter-reference-clear',function(){referenceRange=null;saved.referenceRange=null;saved.referencePeriod=null;start=null;paint();result.dispatchEvent(new CustomEvent('scatter-reference-change'));});
+  function updateReference(){
+    var selected=referenceRange?points.filter(function(p,i){return positions[i].x>=referenceRange[0]-1e-6&&positions[i].x<=referenceRange[1]+1e-6&&isFinite(Date.parse(p.ts));}).slice().sort(function(a,b){return Date.parse(a.ts)-Date.parse(b.ts);}):[];
+    if(!selected.length)return false;
+    saved.referenceRange=referenceRange.map(function(x){return (x-50)/Math.max(1,W-70);});
+    saved.referencePeriod={from:selected[0].ts,to:selected[selected.length-1].ts,points:selected};return true;
+  }
+  if(referenceRange)updateReference();
   function remember(){saved.ranges=ranges.map(function(r){return r.map(function(x){return (x-50)/Math.max(1,W-70);});});}
 
   var overlay=document.createElementNS('http://www.w3.org/2000/svg','g');overlay.setAttribute('pointer-events','none');svg.appendChild(overlay);
@@ -4843,8 +4863,21 @@ function mountScatterDrag(box,data,points,positions){
   function label(x){var nearest=0;positions.forEach(function(p,i){if(Math.abs(p.x-x)<Math.abs(positions[nearest].x-x))nearest=i;});return points[nearest]?scoreRegionTime(points[nearest].ts):'';}
   function chosen(){var groups=curationRangeGroups(points,positions,ranges);return groups.length?groups[0].rows:[];}
   function paint(){remember();overlay.innerHTML='';list.innerHTML='';ranges.forEach(function(r,i){var rect=document.createElementNS('http://www.w3.org/2000/svg','rect');rect.setAttribute('x',r[0]);rect.setAttribute('y','26');rect.setAttribute('width',Math.max(1,r[1]-r[0]));rect.setAttribute('height',Math.max(0,H-64));rect.setAttribute('fill','#3b82f6');rect.setAttribute('fill-opacity','.12');rect.setAttribute('stroke','#2563eb');overlay.appendChild(rect);var button=document.createElement('button');button.className='btn soft';button.textContent='구간 '+(i+1)+' · '+label(r[0])+' ~ '+label(r[1])+' ×';button.title='이 구간 삭제 (시각은 인접 웨이퍼 기준)';button.onclick=function(){ranges.splice(i,1);invalidate();paint();};list.appendChild(button);});status.textContent=start!==null?'끝 지점을 클릭하세요.':ranges.length+'개 구간 · 분석 대상 '+chosen().length+'매 · LOT 첫 장 '+(dispFirstOn()?'포함':'제외');if(start!==null){var line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('x1',start);line.setAttribute('x2',start);line.setAttribute('y1',26);line.setAttribute('y2',H);line.setAttribute('stroke','#2563eb');line.setAttribute('stroke-dasharray','4 3');overlay.appendChild(line);}}
+  var paintAnalysis=paint;
+  paint=function(){
+    paintAnalysis();
+    if(referenceRange){var rect=document.createElementNS('http://www.w3.org/2000/svg','rect');rect.setAttribute('class','scatter-reference-shade');rect.setAttribute('x',referenceRange[0]);rect.setAttribute('y','26');rect.setAttribute('width',Math.max(1,referenceRange[1]-referenceRange[0]));rect.setAttribute('height',Math.max(0,H-64));rect.setAttribute('fill','#7c3aed');rect.setAttribute('fill-opacity','.08');rect.setAttribute('stroke','#7c3aed');overlay.appendChild(rect);}
+    if(pickMode.value==='reference')status.textContent=start!==null?'평균 비교기간의 끝 지점을 클릭하세요.':saved.referencePeriod?'평균 비교기간: '+scoreRegionTime(saved.referencePeriod.from)+' ~ '+scoreRegionTime(saved.referencePeriod.to)+' · 평균 조회·표시를 눌러주세요.':'평균 비교기간의 시작 지점을 클릭하세요.';
+  };
   controls.querySelector('.scatter-drag-clear').onclick=function(){ranges=[];start=null;invalidate();paint();};
-  hit.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;p=p.matrixTransform(svg.getScreenCTM().inverse());var x=Math.max(50,Math.min(W-20,p.x));invalidate();if(start===null)start=x;else{ranges.push([Math.min(start,x),Math.max(start,x)]);start=null;}paint();});
+  hit.addEventListener('click',function(e){
+    e.preventDefault();e.stopPropagation();var p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;p=p.matrixTransform(svg.getScreenCTM().inverse());var x=Math.max(50,Math.min(W-20,p.x));
+    if(pickMode.value==='reference'){
+      var nearest=0;positions.forEach(function(point,i){if(Math.abs(point.x-x)<Math.abs(positions[nearest].x-x))nearest=i;});x=positions[nearest].x;
+      if(start===null)start=x;else{referenceRange=[Math.min(start,x),Math.max(start,x)];start=null;updateReference();result.dispatchEvent(new CustomEvent('scatter-reference-change'));}
+    }else{invalidate();if(start===null)start=x;else{ranges.push([Math.min(start,x),Math.max(start,x)]);start=null;}}
+    paint();
+  });
   controls.querySelector('.scatter-range-analyze').onclick=function(){
     if(start!==null){status.textContent='선택 중인 구간의 끝 지점을 먼저 클릭하세요.';return;}
     invalidate();saved.analyzed=true;var groups=curationRangeGroups(points,positions,ranges);

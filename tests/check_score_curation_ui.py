@@ -145,20 +145,28 @@ function mount(data){box.innerHTML='';box._data=data;mountScoreCuration(box,data
  var changed=await mountIsolation(Object.assign({},isolationRegion,{rangeNumber:1,rows:isolationRegion.rows.slice(1)}));
  ok(!changed.querySelector('.curation-ignored-sensor'),'changed wafer membership has independent exclusions');
 
- var previousFetch=window.fetch,referenceRequests=0,referenceBatches=0;
+ var previousFetch=window.fetch,referenceBatches=0;
  var referencePoints=[0,1].map((i)=>Object.assign({},points[0],{wafer_id:'WUK_REF_'+i,ts:'2025-12-01T00:0'+i+':00',lot_first:i===0}));
  var referenceRows=referencePoints.map((p,i)=>({date:p.ts.slice(0,10),wid:p.wafer_id,cylinder_difference:null,valve_phases:{version:2,status:'ok',steps:{supply:[1],wait:[3],process:[2],discharge:[4]}},step_timing:{steps:{1:{seconds:10},2:{seconds:20},3:{seconds:30},4:{seconds:40}}},sensor_metrics:{mean:{extra0:{1:5,2:10+i*20,3:0,4:0}}}}));
  window.fetch=async function(url,opts){
-   if(url.startsWith('/api/scatter?')){referenceRequests++;return {ok:true,json:async()=>({model_id:'m',points:referencePoints.concat([Object.assign({},referencePoints[0],{wafer_id:'foreign',chamber:'dsv2'})])})};}
+
    if(url==='/api/scatter/step-times'&&JSON.parse(opts.body).wafers.some(p=>p.wid.startsWith('WUK_REF_'))){referenceBatches++;return {ok:true,json:async()=>({model_id:'m',wafers:referenceRows})};}
    return previousFetch(url,opts);
  };
- var from=rangeB.querySelector('.curation-reference-from'),to=rangeB.querySelector('.curation-reference-to'),apply=rangeB.querySelector('.curation-reference-apply');
- from.value='2025-12-02T00:00';to.value='2025-12-01T00:00';apply.click();await pause();ok(referenceRequests===0&&rangeB.querySelector('.curation-reference-status').textContent.includes('올바르게'),'invalid reference range rejected before fetch');
- from.value='2025-12-01T00:00';to.value='2025-12-01T00:01';apply.click();await pause();
+
+ var apply=rangeB.querySelector('.curation-reference-apply'),pickRequests=0;
+ rangeB.addEventListener('scatter-reference-pick',()=>pickRequests++);
+ rangeB.addEventListener('scatter-reference-clear',()=>{rangeB._referenceSelection.referencePeriod=null;});
+ rangeB.querySelector('.curation-reference-pick').click();ok(pickRequests===1,'comparison button requests period selection on scatter');
+ ok(!rangeB.querySelector('.curation-reference-from')&&!rangeB.querySelector('.curation-reference-to'),'manual date fields replaced by scatter selection');
+ apply.click();await pause();ok(referenceBatches===0&&rangeB.querySelector('.curation-reference-status').textContent.includes('먼저 클릭'),'missing click-selected period rejected before fetch');
+ rangeB._referenceSelection={referencePeriod:{from:referencePoints[0].ts,to:referencePoints[1].ts,points:referencePoints.concat([Object.assign({},referencePoints[0],{wafer_id:'foreign',chamber:'dsv2'})])}};
+ rangeB.dispatchEvent(new CustomEvent('scatter-reference-change'));apply.click();await pause();
  var refSensor=rangeB.querySelector('.curation-auto-sensor[data-sensor="extra0"]');
- ok(referenceBatches===1,'reference outside scatter period loads step measurements');
+ ok(referenceBatches===1,'click-selected reference wafers load step measurements');
  ok(refSensor.querySelector('.curation-reference-mean[data-field="temperature"]').dataset.mean==='20','custom period mean includes exact boundary wafers');
+ ok(refSensor.querySelectorAll('.curation-reference-mean').length===1,'one purple sensor average line without duplicate duration line');
+ ok(!refSensor.querySelector('.curation-reference-mean[data-field="seconds"]'),'duration reference mean remains table-only');
  ok(refSensor.querySelector('.curation-reference-table').textContent.includes('20 (2매)'),'custom mean table reports valid wafer count and excludes foreign chamber');
  ok(refSensor.querySelector('.curation-reference-summary').textContent.includes('2025-12-01'),'reference period labelled');
  ok(!rangeA.querySelector('.curation-reference-mean'),'reference period isolated per selected range');
@@ -167,6 +175,7 @@ function mount(data){box.innerHTML='';box._data=data;mountScoreCuration(box,data
  ok(refSensor.querySelector('.curation-reference-mean[data-field="temperature"]').dataset.mean==='30','reference mean obeys first wafer exclusion');
  includeFirst=true;apply.click();await pause();
  ok(rangeB.querySelector('.curation-auto-sensor[data-sensor="extra0"] summary').textContent===rankBefore,'reference comparison does not change selected ranking');
+ rangeB._referenceSelection.referencePeriod={from:referencePoints[1].ts,to:referencePoints[1].ts,points:[referencePoints[1]]};rangeB.dispatchEvent(new CustomEvent('scatter-reference-change'));ok(!rangeB.querySelector('.curation-reference-mean'),'selecting a different period clears old reference mean');apply.click();await pause();
  rangeB.querySelector('.curation-reference-clear').click();ok(!rangeB.querySelector('.curation-reference-mean')&&!rangeB.querySelector('.curation-reference-table'),'reference clear removes extra averages');
  window.fetch=previousFetch;
  rangeA.remove();rangeB.remove();changed.remove();

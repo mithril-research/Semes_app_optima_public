@@ -67,6 +67,16 @@ function state(box){return Array.from(box.querySelectorAll('.sc-scroll')).map(sc
  clickRange(650);clickRange(850);
  var saved=box._modelPanels.integrated.chart._curationRangeSelection.ranges[0],W=svg.viewBox.baseVal.width;
  ok(Math.abs(saved[0]-(650-50)/(W-70))<.00001&&Math.abs(saved[1]-(850-50)/(W-70))<.00001,'range selection retains original SVG coordinates after scrolling');
+ var selection=box._modelPanels.integrated.chart._curationRangeSelection,pickMode=box.querySelector('.scatter-pick-mode');
+ pickMode.value='reference';pickMode.dispatchEvent(new Event('change'));
+ var markers=Array.from(svg.querySelectorAll('g[onclick] path'));
+ function markerX(index){var rect=markers[index].getBBox();return rect.x+rect.width/2;}
+ clickRange(markerX(2));clickRange(markerX(4));
+ ok(selection.referencePeriod.points.length===3,'two X-axis clicks select inclusive reference wafer interval');
+ ok(selection.ranges.length===1,'reference picking preserves analysis ranges');
+ ok(!!svg.querySelector('.scatter-reference-shade'),'reference interval highlighted on integrated scatter');
+ var referenceStart=selection.referencePeriod.from;
+
  ok(box.querySelector('.sc-ymax').disabled,'score Y maximum is fixed');
  box._ymax=7;drawScatter(box,data,box._opts);
  await waitFor(()=>box.querySelectorAll('.sc-fixed-y-axis').length===3);await pause();
@@ -102,6 +112,7 @@ function state(box){return Array.from(box.querySelectorAll('.sc-scroll')).map(sc
  var scale=chart('tcn').querySelector('.sc-scale');scale.value='60m';scale.dispatchEvent(new Event('change'));await pause();
  ok(['integrated','tcn','step_time','cylinder'].every(mode=>chart(mode).querySelector('.sc-scale').value==='60m'),'axis unit change updates all four plots');
  ok(chart('integrated')._curationRangeSelection.ranges.length===1,'shared scale retains integrated selection');
+ ok(chart('integrated')._curationRangeSelection.referencePeriod.from===referenceStart,'reference click selection survives scale changes');
  var sourceScroll=chart('step_time').querySelector('.sc-scroll');sourceScroll.scrollLeft=(sourceScroll.scrollWidth-sourceScroll.clientWidth)/3;await pause();
  function ratio(mode){var el=chart(mode).querySelector('.sc-scroll');return el.scrollLeft/(el.scrollWidth-el.clientWidth);}
  ok(['integrated','tcn','step_time','cylinder'].every(mode=>Math.abs(ratio(mode)-1/3)<.002),'scrolling one model synchronizes all four');
