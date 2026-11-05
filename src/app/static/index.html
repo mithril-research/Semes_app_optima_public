@@ -4869,7 +4869,7 @@ function mountScatterDrag(box,data,points,positions){
     if(referenceRange){var rect=document.createElementNS('http://www.w3.org/2000/svg','rect');rect.setAttribute('class','scatter-reference-shade');rect.setAttribute('x',referenceRange[0]);rect.setAttribute('y','26');rect.setAttribute('width',Math.max(1,referenceRange[1]-referenceRange[0]));rect.setAttribute('height',Math.max(0,H-64));rect.setAttribute('fill','#7c3aed');rect.setAttribute('fill-opacity','.08');rect.setAttribute('stroke','#7c3aed');overlay.appendChild(rect);}
     if(pickMode.value==='reference')status.textContent=start!==null?'평균 비교기간의 끝 지점을 클릭하세요.':saved.referencePeriod?'평균 비교기간: '+scoreRegionTime(saved.referencePeriod.from)+' ~ '+scoreRegionTime(saved.referencePeriod.to)+' · 평균 조회·표시를 눌러주세요.':'평균 비교기간의 시작 지점을 클릭하세요.';
   };
-  controls.querySelector('.scatter-drag-clear').onclick=function(){ranges=[];start=null;invalidate();paint();};
+  controls.querySelector('.scatter-drag-clear').onclick=function(){ranges=[];start=null;pickMode.value='analysis';saved.pickMode='analysis';result.dispatchEvent(new CustomEvent('scatter-reference-clear'));invalidate();paint();};
   hit.addEventListener('click',function(e){
     e.preventDefault();e.stopPropagation();var p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;p=p.matrixTransform(svg.getScreenCTM().inverse());var x=Math.max(50,Math.min(W-20,p.x));
     if(pickMode.value==='reference'){

@@ -154,6 +154,15 @@ function state(box){return Array.from(box.querySelectorAll('.sc-scroll')).map(sc
  ok(panel('cylinder').textContent.includes('DSV 모델 없음'),'missing model reason visible');
  ok(!chart('cylinder').querySelector('g[onclick]'),'missing scores never become zero dots');
  ok(shownScore('tcn').includes('이상점수 0.50')&&panel('tcn').open,'other models stay visible when one is missing');
+
+ chart('integrated').querySelector('.scatter-drag-clear').click();
+ var cleared=chart('integrated')._curationRangeSelection;
+ ok(cleared.ranges.length===0&&!cleared.analyzed,'clear all removes analysis ranges and results');
+ ok(cleared.referenceRange===null&&cleared.referencePeriod===null,'clear all also removes mean comparison period');
+ ok(!chart('integrated').querySelector('.scatter-reference-shade'),'clear all removes reference overlay');
+ ok(chart('integrated').querySelector('.scatter-pick-mode').value==='analysis','clear all resets selection mode');
+ drawScatter(box,data,box._opts);await pause();
+ ok(!chart('integrated')._curationRangeSelection.referencePeriod&&!chart('integrated').querySelector('.scatter-reference-shade'),'cleared comparison period stays cleared after redraw');
  await nativeFetch('/result',{method:'POST',body:JSON.stringify({ok:true,checks:checks})});
 })().catch(e=>nativeFetch('/result',{method:'POST',body:JSON.stringify({error:e.message,stack:e.stack})}));
 '''
