@@ -76,6 +76,18 @@ checks = r'''
  var search=app.querySelector('.fa-sensor-search');search.value='T_950';search.dispatchEvent(new Event('input'));ok(app.querySelector('.fa-sensors input[value="P_950"]').parentNode.hidden,'sensor search filters choices');search.value='';search.dispatchEvent(new Event('input'));
  var reqBefore=requests.length;app.querySelector('.fa-chambers input[value="dsv2"]').click();await waitFor(()=>FullAnalysis.state.display.current.length===12);ok(requests.length===reqBefore,'chamber filter reuses archive cache');
  app.querySelector('.fa-equipments input[value="EQ_B"]').click();await waitFor(()=>app.querySelectorAll('.fa-row').length===4);ok(FullAnalysis.state.display.current.length===36,'comparison equipment includes its full chamber population');
+ ok(app.querySelectorAll('.fa-equipment-group').length===2,'one chart group per selected equipment');
+ var groups=Array.from(app.querySelectorAll('.fa-equipment-group'));ok(groups.map(g=>g.dataset.equipment).join()==='EQ_A,EQ_B'&&groups.every(g=>g.querySelectorAll('.fa-row').length===2),'each equipment group contains selected sensors');
+ var eqB=groups[1];eqB.scrollIntoView();await waitFor(()=>eqB.querySelector('.fa-svg'));
+ var segments=Array.from(eqB.querySelectorAll('.fa-row[data-sensor="T_950"] .fa-stage[data-phase="supply"] .fa-chamber-segment[data-reference="false"]'));
+ ok(segments.map(g=>g.dataset.chamber).join()==='dsv1,dsv2'&&Number(segments[0].querySelector('rect').getAttribute('x'))<Number(segments[1].querySelector('rect').getAttribute('x')),'comparison equipment chambers are adjacent left to right within each phase');
+ ok(segments.every(g=>Array.from(g.querySelectorAll('[data-fa-wafer] title')).every(t=>t.textContent.includes('EQ_B · '+g.dataset.chamber))),'each chamber contains only its own measured wafers');
+ app.querySelector('.fa-equipment-chambers[data-equipment="EQ_B"] input[value="dsv1"]').click();await waitFor(()=>FullAnalysis.state.display.current.length===24);
+ eqB=app.querySelector('.fa-equipment-group[data-equipment="EQ_B"]');eqB.scrollIntoView();await waitFor(()=>eqB.querySelector('.fa-svg'));
+ ok(Array.from(eqB.querySelectorAll('.fa-chamber-segment[data-reference="false"]')).every(g=>g.dataset.chamber==='dsv2'),'comparison chamber selection filters chart segments');
+ app.querySelectorAll('.fa-equipment-chambers[data-equipment="EQ_B"] button')[1].click();await waitFor(()=>app.querySelectorAll('.fa-equipment-group').length===1);ok(FullAnalysis.state.display.current.length===12,'clear all comparison chambers removes equipment cohort and group');
+ app.querySelector('.fa-equipment-chambers[data-equipment="EQ_B"] input[value="dsv1"]').click();await waitFor(()=>app.querySelectorAll('.fa-equipment-group').length===2);ok(FullAnalysis.state.display.current.length===24,'comparison chambers can be reselected');
+ app.querySelector('.fa-query').click();await waitFor(()=>!app.querySelector('.fa-query').disabled);ok(FullAnalysis.state.equipmentChambers.EQ_B.join()==='dsv1','refresh preserves per-equipment chamber selection');
  app.querySelector('.fa-ref-edit').click();var editor=app.querySelector('.fa-ref-editor');
  editor.querySelector('.fa-r-previous').click();ok(Date.parse(editor.querySelector('.fa-r-to').value)===Date.parse(app.querySelector('.fa-from').value),'previous same length shortcut');
  editor.querySelector('.fa-r-day').click();ok(Date.parse(editor.querySelector('.fa-r-from').value)===Date.parse(app.querySelector('.fa-from').value)-86400000,'day-before REF shortcut');

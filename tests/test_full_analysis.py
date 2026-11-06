@@ -60,8 +60,12 @@ var reference={from:many[0].ts,to:many[2].ts,groups:[{equipment:'EQ_A',chambers:
 ok(u.refPoints(many,reference).length===3,'REF includes both endpoints');
 ok(!u.refPoints(many.map(p=>Object.assign({},p,{recipe:'B'})),reference).length,'REF recipe scope');
 var points=many.slice(0,6),cache={};points.forEach((p,i)=>{cache[JSON.stringify([p.ts.slice(0,10),p.wafer_id])]={valve_phases:{version:2,status:'ok',steps:{supply:[1],process:[1]}},sensor_metrics:{mean:{T_950:{1:i===5?100:10}}}};p.ratio=i===5?2:.2;});
-var display={eq:'EQ_A',chambers:['dsv1','dsv2'],equipments:['EQ_B'],current:points,reference:points.slice(0,5),useRef:true,cache:cache};
+var display={eq:'EQ_A',chambers:['dsv1','dsv2'],equipments:['EQ_B'],equipmentChambers:{EQ_B:['dsv2','dsv1']},current:points,reference:points.slice(0,5),useRef:true,cache:cache};
 var rows=u.rowsFor(display,['T_950']);ok(rows.length===2&&rows[0].segments.length===2&&rows[1].comparison,'row per equipment and sensor');
+ok(rows[1].segments.map(s=>s.label).join()==='dsv2,dsv1'&&rows[1].segments.every(s=>s.points.every(p=>p.tool==='EQ_B'&&p.chamber===s.label)),'comparison equipment keeps selected chamber order and never mixes populations');
+var ordered=u.rowsFor(display,['T_950','P_950']);ok(ordered.map(r=>r.equipment).join()==='EQ_A,EQ_A,EQ_B,EQ_B','equipment groups contain selected sensor rows');
+var empty=Object.assign({},display,{equipmentChambers:{EQ_B:[]}});ok(u.rowsFor(empty,['T_950']).length===1,'explicit empty chamber selection excludes equipment');
+var sameName=Object.assign({},display,{reference:points.map(p=>Object.assign({},p,{tool:'EQ_B'}))});ok(u.rowsFor(sameName,['T_950'])[0].segments[0].refFallback,'same chamber name on another equipment does not match REF');
 ok(rows[0].segments[1].refFallback,'missing REF chamber uses whole REF with explicit notice');
 var prep=u.prepare(rows[0],display,'mean',['supply','process']);var range=prep.normals.get(prep.rangeKey(points[0],1));
 ok(range.count===5,'overlapping REF and overlapping phases do not inflate normal population');
