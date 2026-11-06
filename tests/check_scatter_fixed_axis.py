@@ -22,6 +22,7 @@ function ok(v,m){checks++;if(!v)throw Error(m);}
 function esc(v){return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
 function scMountSteps(){return false;}function clearTrendAnalysis(){}function trendAnalysisLoaded(){return {};}
 function syncTrendAnalysis(){}function setBands(){}function refreshAfterRuleChange(){}
+var fullRefs=[],fullRefClears=0,views=[];window.FullAnalysis={saveRef:(period,model)=>fullRefs.push({period:period,model:model}),clearRef:()=>fullRefClears++};function switchView(view){views.push(view);}
 function scScaleLoad(){return '10m';}function scScaleSave(){}function scRecipeShapeIndex(){return 0;}
 function dispFirstOn(){return true;}function integratedTooltip(){return '';}
 function scatterScoreText(p){return Number(p.ratio).toFixed(2);}
@@ -75,6 +76,8 @@ function state(box){return Array.from(box.querySelectorAll('.sc-scroll')).map(sc
  ok(selection.referencePeriod.points.length===3,'two X-axis clicks select inclusive reference wafer interval');
  ok(selection.ranges.length===1,'reference picking preserves analysis ranges');
  ok(!!svg.querySelector('.scatter-reference-shade'),'reference interval highlighted on integrated scatter');
+ ok(fullRefs.length===1&&fullRefs[0].period.points.length===3&&fullRefs[0].model==='fixture','Overview selection publishes actual period as full-analysis REF');
+ box.querySelector('.scatter-full-analysis').click();ok(views[0]==='full-analysis','Overview REF comparison action opens full-analysis tab');
  var referenceStart=selection.referencePeriod.from;
 
  ok(box.querySelector('.sc-ymax').disabled,'score Y maximum is fixed');
@@ -185,6 +188,7 @@ function state(box){return Array.from(box.querySelectorAll('.sc-scroll')).map(sc
  var cleared=chart('integrated')._curationRangeSelection;
  ok(cleared.ranges.length===0&&!cleared.analyzed,'clear all removes analysis ranges and results');
  ok(cleared.referenceRange===null&&cleared.referencePeriod===null,'clear all also removes mean comparison period');
+ ok(fullRefClears===1,'clear all also clears full-analysis session REF');
  ok(!chart('integrated').querySelector('.scatter-reference-shade'),'clear all removes reference overlay');
  ok(chart('integrated').querySelector('.scatter-pick-mode').value==='analysis','clear all resets selection mode');
  drawScatter(box,data,box._opts);await pause();

@@ -624,6 +624,7 @@ _MOCK_TMPL = r"""
         // ★ lot·lot_first 도 그대로 넘긴다 — 산점도가 'LOT 첫 장'을 흐리게 그리는 데 쓴다.
         //   (예전엔 빠져 있어 내보낸 HTML 에서만 첫 장 표시가 안 됐다)
         var pts=ws.map(function(w){return {ts:w.ts,wafer_id:w.wafer_id,chamber:w.chamber,recipe:w.recipe,mean_recipe:w.mean_recipe,
+          tool:w.tool,equipment:w.equipment,score_components:w.score_components,
           ratio:w.ratio,score:w.score,threshold:(w.threshold!=null?w.threshold:1.0),verdict:w.verdict,
           band:w.band,n_tp:w.n_tp,lot:w.lot,lot_first:!!w.lot_first};});
         var n=pts.length,tr={slope:0,dir:'flat',y0:null,y1:null};
@@ -812,6 +813,11 @@ def build_export_html(index_html: str, wafers: list, detail: dict, cfg: dict,
             .replace("__WAFERS__", json.dumps(wafers, ensure_ascii=False))
             .replace("__DETAIL__", json.dumps(detail, ensure_ascii=False))
             .replace("__CFG__", json.dumps(cfg, ensure_ascii=False)))
+    asset_tag = '<script src="/static/full_analysis.js"></script>'
+    if asset_tag in index_html:
+        asset_root = Path(static_dir) if static_dir is not None else Path(__file__).parent / "static"
+        asset = (asset_root / "full_analysis.js").read_text(encoding="utf-8")
+        index_html = index_html.replace(asset_tag, "<script>\n" + asset.replace("</script", "<\\/script") + "\n</script>")
     idx = index_html.find("<script>")
     if idx < 0:
         raise RuntimeError("index.html 에 <script> 태그 없음")
