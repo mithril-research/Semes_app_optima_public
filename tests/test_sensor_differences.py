@@ -14,7 +14,8 @@ class SensorDifferenceTests(unittest.TestCase):
         self.assertEqual(metrics['min']['P_900'], {'1': -2., '2': 20., 'zero_start':999.})
         self.assertEqual(row['sensor_series'][0]['step_stats']['1']['max'], 8.)
         self.assertEqual(metrics['std']['P_900'], {'1': 5., '2': 0., 'zero_start':0.})
-        self.assertEqual(step_sensor_metrics({}), {'mean': {}, 'min': {}, 'std': {}})
+        self.assertEqual(metrics['count']['P_900'], {'1': 2, '2': 1, 'zero_start': 1})
+        self.assertEqual(step_sensor_metrics({}), {'mean': {}, 'min': {}, 'std': {}, 'count': {}})
 
     def test_custom_pair_uses_aligned_raw_samples_and_reversed_sign(self):
         archive = dict(actual=np.array([[999., 0.], [10., 8.], [20., 30.], [np.nan, 5.]]),

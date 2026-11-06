@@ -21,16 +21,24 @@ function value(row,sensor,step,stat){
   var v=sensor===DURATION?((((row.step_timing||{}).steps||{})[step]||{}).seconds):stat==='max'?(((row.peaks||{})[sensor]||{})[step]):(((((row.sensor_metrics||{})[stat]||{})[sensor])||{})[step]);
   return typeof v==='number'&&isFinite(v)?v:null;
 }
-function score(p){var q=integratedPoint(p,false);return typeof q.ratio==='number'&&!Number.isNaN(q.ratio)?q.ratio:null;}
-function normalRange(values){
-  var n=0,mean=0,m2=0;values.forEach(function(v){if(typeof v!=='number'||!isFinite(v))return;n++;var d=v-mean;mean+=d/n;m2+=d*(v-mean);});
-  if(n<5)return null;var sd=Math.sqrt(Math.max(0,m2/n)),tol=Math.max(sd*3.5,Math.abs(mean)*1e-12,1e-12);return {mean:mean,sd:sd,count:n,lo:mean-tol,hi:mean+tol};
+function phaseValue(row,sensor,phase,stat){
+  var steps=positiveSteps(row,phase);if(!steps.length)return null;
+  var values=steps.map(function(n){return value(row,sensor,n,stat);});if(values.some(function(v){return v===null;}))return null;
+  if(sensor===DURATION)return values.reduce(function(a,b){return a+b;},0);
+  if(stat==='max')return Math.max.apply(null,values);if(stat==='min')return Math.min.apply(null,values);
+  if(steps.length===1)return values[0];
+  var means=steps.map(function(n){return value(row,sensor,n,'mean');}),counts=steps.map(function(n){return value(row,sensor,n,'count');});
+  if(means.some(function(v){return v===null;})||counts.some(function(n){return n===null||n<=0;}))return null;
+  var count=counts.reduce(function(a,b){return a+b;},0),mean=means.reduce(function(sum,v,i){return sum+v*counts[i];},0)/count;
+  if(stat==='mean')return mean;
+  return Math.sqrt(Math.max(0,values.reduce(function(sum,sd,i){return sum+counts[i]*(sd*sd+Math.pow(means[i]-mean,2));},0)/count));
 }
-function thin(points,limit,alert){
+function stepRange(steps){
+  var ranges=[],start=null,end=null;steps.forEach(function(n){if(start===null){start=end=n;}else if(n===end+1){end=n;}else{ranges.push(start===end?String(start):start+'–'+end);start=end=n;}});if(start!==null)ranges.push(start===end?String(start):start+'–'+end);return ranges.length?'스텝 '+ranges.join(', '):'스텝 구간 없음';
+}
+function thin(points,limit){
   var ordered=sortPoints(points);if(ordered.length<=limit)return {points:ordered,thinned:false};
-  var critical=ordered.filter(alert),rest=ordered.filter(function(p){return !alert(p);}),count=Math.max(0,limit-critical.length),pick=[];
-  for(var i=0;i<Math.min(count,rest.length);i++)pick.push(rest[Math.floor(i*rest.length/Math.min(count,rest.length))]);
-  var out=sortPoints(critical.concat(pick));return {points:out,thinned:out.length<ordered.length};
+  var pick=[];for(var i=0;i<limit;i++)pick.push(ordered[Math.floor(i*(ordered.length-1)/Math.max(1,limit-1))]);return {points:pick,thinned:true};
 }
 function validRef(r){return r&&isFinite(Date.parse(r.from))&&isFinite(Date.parse(r.to))&&Date.parse(r.from)<=Date.parse(r.to)&&Array.isArray(r.groups)&&r.groups.length&&r.groups.every(function(g){return typeof g.equipment==='string'&&Array.isArray(g.chambers)&&g.chambers.length;});}
 try{var saved=JSON.parse(sessionStorage.getItem(REF_KEY)||'null');if(validRef(saved))state.ref=saved;}catch(e){}
@@ -50,7 +58,7 @@ function css(){if(document.getElementById('full-analysis-style'))return;var s=do
 function mount(){
   css();state.host=document.getElementById('fullAnalysisApp');
   var overview=document.getElementById('drillTrendChart'),opts=overview&&overview._opts||{},now=Date.now();state.from=opts.axisStart||local(now-86400000);state.to=opts.axisEnd||local(now);
-  state.host.innerHTML='<div class="fa-controls"><b>선택기간</b>'+[['24h','최근 24시간'],['3d','최근 3일'],['7d','최근 7일']].map(function(x){return '<button class="btn soft fa-quick" data-range="'+x[0]+'">'+x[1]+'</button>';}).join('')+'<label>시작 <input class="fa-from" type="datetime-local" step="1" required></label><label>종료 <input class="fa-to" type="datetime-local" step="1" required></label><button class="btn primary fa-query">조회</button></div><div class="fa-controls"><label>기준 설비 <select class="fa-equipment"></select></label></div><details open><summary>챔버 선택 (기준 설비)</summary><div class="fa-chambers fa-choices"></div></details><details><summary>비교 설비 · 챔버 선택</summary><div class="fa-equipments fa-choices"></div><div class="fa-equipment-chamber-choices fa-choices"></div></details><details open><summary class="fa-sensor-summary">센서 · 스텝 소요시간 선택</summary><input class="fa-sensor-search" type="search" placeholder="센서 검색" aria-label="전체분석 센서 검색"><div class="fa-sensors fa-choices"></div></details><div class="fa-controls"><b>단계</b><span class="fa-phases"></span><b>통계값</b><span class="fa-statistics"></span></div><div class="fa-refbar"><b>REF</b> <span class="fa-ref-label"></span><div class="fa-controls"><label><input class="fa-use-ref" type="checkbox"> REF와 비교 (단계마다 옆에 표시)</label><button class="btn soft fa-ref-edit">REF 직접 설정</button><button class="btn soft fa-ref-clear">REF 해제</button><button class="btn soft fa-overview">Overview에서 선택</button></div></div><div class="fa-ref-editor" hidden></div><div class="fa-status muted" role="status"></div><div class="fa-legend">'+PHASES.map(function(p){return '<span style="color:'+p[2]+'">● '+p[1]+'</span>';}).join('')+'<span style="color:#dc2626">● 스텝 값 정상 범위 밖</span><span style="color:#b91c1c">◎ 종합 점수 1 이상</span><span>REF: 옅은 배경</span></div><p class="muted" style="font-size:12px">점 하나는 웨이퍼 한 장의 스텝 통계값입니다. 스텝 칸 안에서 시간 순서로 표시하며, 같은 단계의 챔버·REF가 Y축을 공유합니다. 정상 범위는 동일 설비·챔버·레시피·스텝의 정상 판정 실측값 5매 이상에서 평균 ± 3.5σ(ddof=0)로 계산합니다. REF 정상 자료를 포함하며 자료가 부족하면 정상 범위 판정을 표시하지 않습니다.</p><div class="fa-rows"></div>';
+  state.host.innerHTML='<div class="fa-controls"><b>선택기간</b>'+[['24h','최근 24시간'],['3d','최근 3일'],['7d','최근 7일']].map(function(x){return '<button class="btn soft fa-quick" data-range="'+x[0]+'">'+x[1]+'</button>';}).join('')+'<label>시작 <input class="fa-from" type="datetime-local" step="1" required></label><label>종료 <input class="fa-to" type="datetime-local" step="1" required></label><button class="btn primary fa-query">조회</button></div><div class="fa-controls"><label>기준 설비 <select class="fa-equipment"></select></label></div><details open><summary>챔버 선택 (기준 설비)</summary><div class="fa-chambers fa-choices"></div></details><details><summary>비교 설비 · 챔버 선택</summary><div class="fa-equipments fa-choices"></div><div class="fa-equipment-chamber-choices fa-choices"></div></details><details open><summary class="fa-sensor-summary">센서 · 공정 소요시간 선택</summary><input class="fa-sensor-search" type="search" placeholder="센서 검색" aria-label="전체분석 센서 검색"><div class="fa-sensors fa-choices"></div></details><div class="fa-controls"><b>단계</b><span class="fa-phases"></span><b>공정 통계값</b><span class="fa-statistics"></span></div><div class="fa-refbar"><b>REF</b> <span class="fa-ref-label"></span><div class="fa-controls"><label><input class="fa-use-ref" type="checkbox"> REF와 비교 (단계마다 옆에 표시)</label><button class="btn soft fa-ref-edit">REF 직접 설정</button><button class="btn soft fa-ref-clear">REF 해제</button><button class="btn soft fa-overview">Overview에서 선택</button></div></div><div class="fa-ref-editor" hidden></div><div class="fa-status muted" role="status"></div><div class="fa-legend">'+PHASES.map(function(p){return '<span style="color:'+p[2]+'">● '+p[1]+'</span>';}).join('')+'<span>REF: 옅은 배경</span></div><p class="muted" style="font-size:12px">점 하나는 웨이퍼 한 장의 공정 통계값입니다. 공정에 포함된 스텝 전체의 센서 측정값으로 계산하며, 평균은 스텝별 유효 샘플 수로 가중합니다. 최대·최소·표준편차도 공정 전체 기준입니다. 공정 소요시간은 해당 스텝 소요시간의 합계입니다. 스텝 구간은 각 챔버 아래에 표시하고, 점은 종료시간 순서로 배치합니다. 같은 공정의 챔버·REF는 Y축을 공유합니다.</p><div class="fa-rows"></div>';
   get('from').value=local(Date.parse(state.from));get('to').value=local(Date.parse(state.to));
   get('query').onclick=function(){runQuery(true);};get('equipment').onchange=function(){state.eq=this.value;updateChoices();queueQuery();};
   state.host.querySelectorAll('.fa-quick').forEach(function(b){b.onclick=function(){var days={"24h":1,"3d":3,"7d":7}[b.dataset.range],end=Date.now();get('from').value=local(end-days*86400000);get('to').value=local(end);runQuery(false);};});
@@ -86,8 +94,8 @@ function updateChoices(){
   var names=Array.from(sensorNames).filter(function(n){return !io.has(n)&&!/^\d+$/.test(n);});if(typeof trendSensorCompare==='function')names.sort(trendSensorCompare);else names.sort();
   state.availableSensors=names;if(!state.sensorInitialized){state.sensors=names.length?[names[0]]:[DURATION];state.sensorInitialized=true;}
   state.sensors=state.sensors.filter(function(s){return s===DURATION||names.indexOf(s)>=0;});
-  choices(get('sensors'),[{value:DURATION,label:'스텝 소요시간 (초)'}].concat(names.map(function(n){return {value:n,label:n};})),state.sensors,function(v){state.sensors=v;updateChoices();queueQuery();},20,true);
-  get('sensor-summary').textContent='센서 · 스텝 소요시간 선택 ('+state.sensors.length+'개 / 최대 20개)';filterSensors();
+  choices(get('sensors'),[{value:DURATION,label:'공정 소요시간 (초)'}].concat(names.map(function(n){return {value:n,label:n};})),state.sensors,function(v){state.sensors=v;updateChoices();queueQuery();},20,true);
+  get('sensor-summary').textContent='센서 · 공정 소요시간 선택 ('+state.sensors.length+'개 / 최대 20개)';filterSensors();
 }
 function filterSensors(){var query=get('sensor-search').value.trim().toLowerCase();get('sensors').querySelectorAll('label[data-name]').forEach(function(label){label.hidden=!!query&&label.dataset.name.indexOf(query)<0;label.style.display=label.hidden?'none':'inline-flex';});}
 function queueQuery(){clearTimeout(state.timer);if(state.loaded)state.timer=setTimeout(function(){runQuery(false);},180);}
@@ -108,7 +116,7 @@ async function runQuery(refresh){
     var query={eq:state.eq,chambers:state.chambers.slice(),equipments:state.equipments.slice(),useRef:state.useRef,ref:state.ref,equipmentChambers:JSON.parse(JSON.stringify(state.equipmentChambers))};
     var groups=selectedGroups(query),current=state.history.filter(function(p){return time(p)>=a&&time(p)<=b&&groups.some(function(g){return eq(p)===g.equipment&&g.chambers.indexOf(p.chamber)>=0;});}),reference=query.useRef?refPoints(state.history,query.ref):[];
     var all=new Map();current.concat(reference).forEach(function(p){all.set(key(p),p);});var cache=state.source._stepTimingRows;
-    var needed=Array.from(all.values()),pending=needed.filter(function(p){var r=cache[key(p)];return !r||r.missing||!r.sensor_metrics||!r.peaks||!r.step_timing||!r.valve_phases||r.valve_phases.version!==2;});
+    var needed=Array.from(all.values()),pending=needed.filter(function(p){var r=cache[key(p)];return !r||r.missing||!r.sensor_metrics||!r.sensor_metrics.count||!r.peaks||!r.step_timing||!r.valve_phases||r.valve_phases.version!==2;});
     for(var i=0;i<pending.length;i+=64){
       status('실측 자료 조회 중 '+Math.min(i+64,pending.length)+' / '+pending.length+'매');
       var batch=pending.slice(i,i+64).map(function(p){return {date:p.date||stamp(p).slice(0,10),wid:p.wafer_id};}),result=await fetchTrendBatch(state.source,state.model,'step-times',batch,signal);
@@ -135,15 +143,10 @@ function rowsFor(display,sensors){
   });});return out;
 }
 function prepare(row,display,stat,phases){
-  var cache=display.cache,sets=[],normalPool=new Map(),normals=new Map(),normalValues=new Map(),phaseSteps={};
-  row.segments.forEach(function(sg){sets.push({segment:sg,ref:false,points:sg.points});if(display.useRef&&sg.ref.length)sets.push({segment:sg,ref:true,points:sg.ref});sg.points.concat(display.useRef?sg.ref:[]).forEach(function(p){normalPool.set(key(p),p);});});
-  function rangeKey(p,n){return JSON.stringify([eq(p),p.chamber,p.mean_recipe||p.recipe,n]);}
-  Array.from(normalPool.values()).forEach(function(p){var s=score(p);if(s==null||s>=1)return;var visited=new Set();phases.forEach(function(phase){positiveSteps(cache[key(p)],phase).forEach(function(n){if(visited.has(n))return;visited.add(n);var v=value(cache[key(p)],row.sensor,n,stat);if(v===null)return;var k=rangeKey(p,n);if(!normalValues.has(k))normalValues.set(k,[]);normalValues.get(k).push(v);});});});
-  normalValues.forEach(function(values,k){normals.set(k,normalRange(values));});
-  function out(p,n,v){var r=normals.get(rangeKey(p,n));return !!r&&v!==null&&(v<r.lo||v>r.hi);}
-  phases.forEach(function(phase){var steps=new Set();sets.forEach(function(set){set.points.forEach(function(p){positiveSteps(cache[key(p)],phase).forEach(function(n){steps.add(n);});});});phaseSteps[phase]=Array.from(steps).sort(function(a,b){return a-b;});});
-  sets.forEach(function(set){var sampled=thin(set.points,160,function(p){var s=score(p);return s!==null&&s>=1||phases.some(function(phase){return positiveSteps(cache[key(p)],phase).some(function(n){return out(p,n,value(cache[key(p)],row.sensor,n,stat));});});});set.sample=sampled.points;set.thinned=sampled.thinned;});
-  return {sets:sets,steps:phaseSteps,normals:normals,rangeKey:rangeKey,out:out};
+  var sets=[];
+  row.segments.forEach(function(sg){sets.push({segment:sg,ref:false,points:sg.points});if(display.useRef&&sg.ref.length)sets.push({segment:sg,ref:true,points:sg.ref});});
+  sets.forEach(function(set){set.values=new Map();set.points.forEach(function(p){var values={};phases.forEach(function(phase){values[phase]=phaseValue(display.cache[key(p)],row.sensor,phase,stat);});set.values.set(key(p),values);});var sampled=thin(set.points,160);set.sample=sampled.points;set.thinned=sampled.thinned;});
+  return {sets:sets};
 }
 function scrollSync(el){
   function apply(other){var left=state.scrollRatio*Math.max(0,other.scrollWidth-other.clientWidth);if(Math.abs(other.scrollLeft-left)>1)other.scrollLeft=left;other._faSyncLeft=other.scrollLeft;}
@@ -158,7 +161,7 @@ function renderRows(){
   rows.forEach(function(row){
     if(!equipmentHosts.has(row.equipment)){var group=document.createElement('section');group.className='fa-equipment-group';group.dataset.equipment=row.equipment;var heading=document.createElement('h3');heading.className='fa-equipment-title';heading.textContent=row.equipment;group.appendChild(heading);host.appendChild(group);equipmentHosts.set(row.equipment,group);}
     row.display=snapshot;var section=document.createElement('section');section.className='fa-row';section.dataset.sensor=row.sensor;section.dataset.equipment=row.equipment;var head=document.createElement('div');head.className='fa-row-head';
-    var title=document.createElement('b');title.textContent=row.title+' · '+(row.sensor===DURATION?'스텝 소요시간 (초)':row.sensor+' (원본 단위)');head.appendChild(title);
+    var title=document.createElement('b');title.textContent=row.title+' · '+(row.sensor===DURATION?'공정 소요시간 (초)':row.sensor+' (원본 단위)');head.appendChild(title);
     row.note=document.createElement('span');row.note.className='muted';row.note.textContent=row.segments.map(function(sg){return sg.label+' '+sg.points.length+'매'+(snapshot.useRef?' / REF '+sg.ref.length+'매':'')+(sg.refFallback?' (REF 챔버 전체와 비교)':'');}).join(' · ');head.appendChild(row.note);
     var zoom=document.createElement('button');zoom.className='btn soft';zoom.textContent='크게 보기 · 이미지 저장';zoom.style.marginLeft='auto';zoom.onclick=function(){drawRow(row);zoomRow(row);};head.appendChild(zoom);section.appendChild(head);
     var plot=document.createElement('div');plot.className='fa-chart-scroll';plot.textContent='실측 통계 준비 중…';section.appendChild(plot);row.plot=plot;plot._faRow=row;equipmentHosts.get(row.equipment).appendChild(section);
@@ -168,39 +171,39 @@ function renderRows(){
 }
 function drawRow(row){
   if(row.drawn||!row.plot.isConnected)return;row.drawn=true;
-  var d=row.display,prepared=prepare(row,d,d.stat,d.phases.map(function(p){return p[0];})),cache=d.cache,H=282,T=48,B=42,AX=48,SW=68,GAP=26,svg='',x=0,points=new Map();row.pointMap=points;
+  var d=row.display,prepared=prepare(row,d,d.stat,d.phases.map(function(p){return p[0];})),cache=d.cache,H=300,T=48,B=60,AX=58,CW=240,GAP=26,svg='',x=0,points=new Map();row.pointMap=points;
   d.phases.forEach(function(phase,pi){
-    var phaseKey=phase[0],steps=prepared.steps[phaseKey],lo=Infinity,hi=-Infinity;
-    prepared.sets.forEach(function(set){set.points.forEach(function(p){var own=positiveSteps(cache[key(p)],phaseKey);steps.forEach(function(n){if(own.indexOf(n)<0)return;var v=value(cache[key(p)],row.sensor,n,d.stat);if(v!==null){lo=Math.min(lo,v);hi=Math.max(hi,v);}});});});
+    var phaseKey=phase[0],lo=Infinity,hi=-Infinity;
+    prepared.sets.forEach(function(set){set.points.forEach(function(p){var v=set.values.get(key(p))[phaseKey];if(v!==null){lo=Math.min(lo,v);hi=Math.max(hi,v);}});});
     if(!isFinite(lo)){lo=0;hi=1;}var padding=(hi-lo)*.08||Math.max(Math.abs(lo)*.05,1);lo-=padding;hi+=padding;
     function y(v){return T+(1-(v-lo)/(hi-lo))*(H-T-B);}
     if(pi){svg+='<line x1="'+(x+GAP/2)+'" x2="'+(x+GAP/2)+'" y1="4" y2="'+(H-8)+'" stroke="var(--line,#ccc)"/>';x+=GAP;}
     svg+='<g class="fa-stage" data-phase="'+phaseKey+'" data-y-min="'+lo+'" data-y-max="'+hi+'">';
     var axis=x;for(var tick=0;tick<=4;tick++){var v=lo+(hi-lo)*tick/4;svg+='<text x="'+(axis+AX-5)+'" y="'+(y(v)+4)+'" font-size="11" text-anchor="end" fill="var(--txt-dim,#64748b)">'+esc(number(v))+'</text>';}
     x+=AX;var phaseStart=x;
-    if(!steps.length){svg+='<text x="'+x+'" y="100" font-size="12" fill="var(--txt-dim,#64748b)">공정 구간 자료 없음</text>';x+=170;}
     prepared.sets.forEach(function(set,si){
-      if(!steps.length)return;if(si)x+=set.ref?12:18;var left=x,width=steps.length*SW;
+      if(si)x+=set.ref?12:18;var left=x,width=CW,patterns=unique(set.points.map(function(p){return stepRange(positiveSteps(cache[key(p)],phaseKey));})),rangeText=patterns.join(' / ')||'스텝 구간 없음';
       svg+='<g class="fa-chamber-segment" data-chamber="'+esc(set.segment.label)+'" data-reference="'+set.ref+'">';
       svg+='<rect x="'+left+'" y="'+T+'" width="'+width+'" height="'+(H-T-B)+'" fill="'+(set.ref?'var(--panel-2,#eaf0ff)':'transparent')+'"'+(set.ref?' stroke="'+phase[2]+'" stroke-dasharray="4 3"':'')+'/>';
       svg+='<text x="'+(left+4)+'" y="35" font-size="11" font-weight="600" fill="'+phase[2]+'">'+esc(set.segment.label+(set.ref?' REF':''))+'</text>';
+      svg+='<text class="fa-step-range" x="'+(left+width/2)+'" y="'+(H-B+17)+'" font-size="11" text-anchor="middle" fill="var(--txt-dim,#64748b)"><title>'+esc(rangeText)+'</title>'+esc(rangeText.length>37?rangeText.slice(0,34)+'…':rangeText)+'</text>';
+      svg+='<text x="'+(left+width/2)+'" y="'+(H-B+33)+'" font-size="10" text-anchor="middle" fill="var(--txt-dim,#64748b)">종료시간 순 →</text>';
       for(var t=0;t<=4;t++){var val=lo+(hi-lo)*t/4;svg+='<line x1="'+left+'" x2="'+(left+width)+'" y1="'+y(val)+'" y2="'+y(val)+'" stroke="var(--line,#e2e8f0)"/>';}
-      steps.forEach(function(n,j){
-        var sx=left+j*SW;if(j)svg+='<line x1="'+sx+'" x2="'+sx+'" y1="'+T+'" y2="'+(H-B)+'" stroke="var(--line,#e2e8f0)" stroke-dasharray="2 3"/>';
-        svg+='<text x="'+(sx+SW/2)+'" y="'+(H-B+17)+'" font-size="11" text-anchor="middle" fill="var(--txt-dim,#64748b)">스텝 '+n+'</text>';
-        set.sample.forEach(function(p,i){
-          var rowData=cache[key(p)];if(positiveSteps(rowData,phaseKey).indexOf(n)<0)return;var v=value(rowData,row.sensor,n,d.stat);if(v===null)return;
-          var cx=sx+4+(set.sample.length>1?i/(set.sample.length-1):.5)*(SW-8),cy=y(v),out=prepared.out(p,n,v),total=score(p),bad=total!==null&&total>=1,range=prepared.normals.get(prepared.rangeKey(p,n)),k=key(p);points.set(k,p);
-          var tip=(set.ref?'REF · ':'')+eq(p)+' · '+p.chamber+' · '+p.wafer_id+'\n종료 '+stamp(p)+' · 레시피 '+(p.recipe||'')+'\n'+phase[1]+' · 스텝 '+n+' · '+(row.sensor===DURATION?'실제 소요시간(초)':row.sensor+' '+STATS.find(function(s){return s[0]===d.stat;})[1])+': '+number(v)+'\n정상 범위: '+(range?number(range.lo)+' ~ '+number(range.hi)+' ('+range.count+'매)'+(out?' · 범위 밖':' · 범위 안'):'정상 판정 실측 자료 5매 미만')+'\n종합 점수: '+(total===Infinity?'∞':number(total))+' · 클릭하면 이상 분석';
-          svg+='<g data-fa-wafer="'+esc(k)+'" tabindex="0" role="button" aria-label="'+esc(tip)+'" style="cursor:pointer">'+(bad?'<circle class="fa-ng-ring" cx="'+cx+'" cy="'+cy+'" r="5.7" fill="none" stroke="#b91c1c" stroke-width="1.2"/>':'')+'<circle class="fa-point'+(out?' fa-outlier':'')+'" data-reference="'+set.ref+'" data-step="'+n+'" data-value="'+v+'" cx="'+cx+'" cy="'+cy+'" r="'+(out?3.6:2.6)+'" fill="'+(out?'#dc2626':row.comparison?chamberColor(p.chamber):phase[2])+'" fill-opacity="'+(out?1:set.ref?0.45:0.7)+'"/><title>'+esc(tip)+'</title></g>';
-        });
-      });svg+='</g>';x=left+width;
+      var drawn=0;
+      set.sample.forEach(function(p,i){
+        var v=set.values.get(key(p))[phaseKey];if(v===null)return;drawn++;
+        var cx=left+6+(set.sample.length>1?i/(set.sample.length-1):.5)*(width-12),cy=y(v),k=key(p);points.set(k,p);
+        var tip=(set.ref?'REF · ':'')+eq(p)+' · '+p.chamber+' · '+p.wafer_id+'\n종료 '+stamp(p)+' · 레시피 '+(p.recipe||'')+'\n'+phase[1]+' · '+stepRange(positiveSteps(cache[key(p)],phaseKey))+'\n'+(row.sensor===DURATION?'공정 소요시간 합계(초)':row.sensor+' 공정 '+STATS.find(function(s){return s[0]===d.stat;})[1])+': '+number(v)+' · 클릭하면 이상 분석';
+        svg+='<g data-fa-wafer="'+esc(k)+'" tabindex="0" role="button" aria-label="'+esc(tip)+'" style="cursor:pointer"><circle class="fa-point" data-reference="'+set.ref+'" data-phase="'+phaseKey+'" data-value="'+v+'" cx="'+cx+'" cy="'+cy+'" r="2.6" fill="'+(row.comparison?chamberColor(p.chamber):phase[2])+'" fill-opacity="'+(set.ref?0.45:0.7)+'"/><title>'+esc(tip)+'</title></g>';
+      });
+      if(!drawn)svg+='<text x="'+(left+width/2)+'" y="140" text-anchor="middle" font-size="12" fill="var(--txt-dim,#64748b)">공정 실측 자료 없음</text>';
+      svg+='</g>';x=left+width;
     });
-    svg+='<text x="'+phaseStart+'" y="15" font-size="13" font-weight="700" fill="'+phase[2]+'">'+phase[1]+' · 단계 공통 Y축</text></g>';
+    svg+='<text x="'+phaseStart+'" y="15" font-size="13" font-weight="700" fill="'+phase[2]+'">'+phase[1]+' · 공정 공통 Y축</text></g>';
   });
   var width=x+12;svg+='<text x="4" y="'+(H-5)+'" font-size="11" fill="var(--txt-dim,#64748b)">선택기간 '+esc(d.from.replace('T',' ')+' ~ '+d.to.replace('T',' '))+(d.useRef&&d.ref?' · REF '+esc(d.ref.from.replace('T',' ')+' ~ '+d.ref.to.replace('T',' ')):'')+'</text>';
-  row.plot.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" class="fa-svg" role="img" aria-label="'+esc(row.title+' '+row.sensor+' 단계별 추이')+'" width="'+width+'" height="'+H+'" viewBox="0 0 '+width+' '+H+'" style="display:block;max-width:none">'+svg+'</svg>';
-  if(prepared.sets.some(function(set){return set.thinned;}))row.note.textContent+=' · 기본 160매 간격 표시 (종합 기준 초과·스텝 이탈 웨이퍼는 모두 유지)';
+  row.plot.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" class="fa-svg" role="img" aria-label="'+esc(row.title+' '+row.sensor+' 공정별 추이')+'" width="'+width+'" height="'+H+'" viewBox="0 0 '+width+' '+H+'" style="display:block;max-width:none">'+svg+'</svg>';
+  if(prepared.sets.some(function(set){return set.thinned;}))row.note.textContent+=' · 최대 160매를 시간 순서로 균등 표시';
   function open(event){var point=event.target.closest('[data-fa-wafer]');if(!point)return;var p=row.pointMap.get(point.getAttribute('data-fa-wafer'));if(p)openWaferInDetail(encodeURIComponent(p.wafer_id),p.date||stamp(p).slice(0,10),false);}
   row.plot.addEventListener('click',open);row.plot.addEventListener('keydown',function(event){if(event.key==='Enter'||event.key===' '){event.preventDefault();open(event);}});scrollSync(row.plot);
 }
@@ -236,5 +239,5 @@ function editRef(){
   };
 }
 async function init(){if(state.host){refreshRef();return runQuery(true);}mount();await runQuery(true);}
-w.FullAnalysis={init:init,saveRef:saveRef,clearRef:clearRef,getRef:function(){return state.ref;},utils:{positiveSteps:positiveSteps,value:value,normalRange:normalRange,thin:thin,refPoints:refPoints,rowsFor:rowsFor,selectedGroups:selectedGroups,prepare:prepare},state:state};
+w.FullAnalysis={init:init,saveRef:saveRef,clearRef:clearRef,getRef:function(){return state.ref;},utils:{positiveSteps:positiveSteps,value:value,phaseValue:phaseValue,stepRange:stepRange,thin:thin,refPoints:refPoints,rowsFor:rowsFor,selectedGroups:selectedGroups,prepare:prepare},state:state};
 })(window);

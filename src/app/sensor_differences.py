@@ -210,7 +210,7 @@ def step_sensor_metrics(row):
                     for step, stat in sensor.get('step_stats', {}).items()
                     if metric in stat}
                     for sensor in row.get('sensor_series', [])}
-            for metric in ('mean', 'min', 'std')}
+            for metric in ('mean', 'min', 'std', 'count')}
 
 
 def compact_trend_export(row, metrics):

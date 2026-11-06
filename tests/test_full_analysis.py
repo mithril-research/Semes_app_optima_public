@@ -36,7 +36,7 @@ window.fetch('/api/scatter?chamber=all').then(r=>r.json()).then(data=>{
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
     @unittest.skipUnless(shutil.which('gjs'), 'requires SpiderMonkey')
-    def test_measured_values_scope_sampling_and_normal_ranges(self):
+    def test_measured_phase_values_scope_and_sampling(self):
         html = Path('src/app/static/index.html').read_text()
         helpers = html[html.index('var INTEGRATED_SCORE_MODE='):html.index('var SC_SENSOR_VIEW_STATE=')]
         module = Path('src/app/static/full_analysis.js').read_text()
@@ -51,11 +51,19 @@ ok(u.positiveSteps({valve_phases:{version:2,status:'missing'}},'process').length
 [['mean',10],['min',-2],['std',0],['max',14]].forEach(x=>ok(u.value(row,'T_950',1,x[0])===x[1],'exact '+x[0]));
 ok(u.value(row,'__duration__',1,'max')===0,'zero-second duration remains valid');
 ok(u.value(row,'T_950',2,'mean')===null&&u.value(row,'unknown',1,'mean')===null,'missing measurements remain missing');
-ok(u.normalRange([1,2,3,4])===null,'minimum five normal wafers');
-var nr=u.normalRange([1,2,3,4,5,null,NaN]);ok(nr.count===5&&nr.mean===3&&Math.abs(nr.sd-Math.sqrt(2))<1e-9,'normal ddof zero and finite-only');
+var phaseRow={valve_phases:{version:2,status:'ok',steps:{process:[1,2]}},sensor_metrics:{mean:{T_950:{1:10,2:20}},min:{T_950:{1:1,2:-2}},std:{T_950:{1:2,2:3}},count:{T_950:{1:3,2:2}}},peaks:{T_950:{1:14,2:25}},step_timing:{steps:{1:{seconds:5},2:{seconds:7}}}};
+ok(u.phaseValue(phaseRow,'T_950','process','mean')===14,'phase mean weights measured samples rather than step means');
+ok(Math.abs(u.phaseValue(phaseRow,'T_950','process','std')-Math.sqrt(30))<1e-9,'pooled population deviation includes between-step variance');
+ok(u.phaseValue(phaseRow,'T_950','process','min')===-2&&u.phaseValue(phaseRow,'T_950','process','max')===25,'phase extrema use all steps');
+ok(u.phaseValue(phaseRow,'__duration__','process','mean')===12,'phase duration sums actual seconds');
+ok(u.stepRange([1,2,4,6,7])==='스텝 1–2, 4, 6–7','step labels preserve noncontiguous ranges');
+phaseRow.sensor_metrics.count.T_950[2]=null;ok(u.phaseValue(phaseRow,'T_950','process','mean')===null,'missing counts never become unweighted step mean');
+phaseRow.sensor_metrics.mean.T_950[2]=null;ok(u.phaseValue(phaseRow,'T_950','process','mean')===null,'missing step never produces partial phase mean');
+phaseRow.step_timing.steps[2].seconds=null;ok(u.phaseValue(phaseRow,'__duration__','process','mean')===null,'partial duration remains missing');
+ok(u.phaseValue(row,'T_950','wait','mean')===null,'unknown phase remains missing');
 var many=Array.from({length:220},(_,i)=>({tool:'EQ_A',chamber:'dsv1',recipe:'A',wafer_id:'w'+i,ts:new Date(1700000000000+i*1000).toISOString(),ratio:i>=200?2:.2}));
-var sample=u.thin(many,160,p=>p.ratio>=1);ok(sample.points.length===160&&sample.points.filter(p=>p.ratio>=1).length===20,'sampling keeps every alert');
-ok(u.thin(many,160,()=>true).points.length===220,'alerts never dropped to meet target');
+var sample=u.thin(many,160);ok(sample.points.length===160&&sample.points[0]===many[0]&&sample.points[159]===many[219],'sampling preserves time order and both endpoints');
+ok(u.thin(many.map(p=>Object.assign({},p,{ratio:100})),160).points.map(p=>p.wafer_id).join()===sample.points.map(p=>p.wafer_id).join(),'sampling is independent of anomaly scores');
 var reference={from:many[0].ts,to:many[2].ts,groups:[{equipment:'EQ_A',chambers:['dsv1']}],recipes:['A']};
 ok(u.refPoints(many,reference).length===3,'REF includes both endpoints');
 ok(!u.refPoints(many.map(p=>Object.assign({},p,{recipe:'B'})),reference).length,'REF recipe scope');
@@ -67,9 +75,9 @@ var ordered=u.rowsFor(display,['T_950','P_950']);ok(ordered.map(r=>r.equipment).
 var empty=Object.assign({},display,{equipmentChambers:{EQ_B:[]}});ok(u.rowsFor(empty,['T_950']).length===1,'explicit empty chamber selection excludes equipment');
 var sameName=Object.assign({},display,{reference:points.map(p=>Object.assign({},p,{tool:'EQ_B'}))});ok(u.rowsFor(sameName,['T_950'])[0].segments[0].refFallback,'same chamber name on another equipment does not match REF');
 ok(rows[0].segments[1].refFallback,'missing REF chamber uses whole REF with explicit notice');
-var prep=u.prepare(rows[0],display,'mean',['supply','process']);var range=prep.normals.get(prep.rangeKey(points[0],1));
-ok(range.count===5,'overlapping REF and overlapping phases do not inflate normal population');
-ok(prep.out(points[5],1,100)&&!prep.out(points[0],1,10),'measured normal range flags step deviation');
+var prep=u.prepare(rows[0],display,'mean',['supply','process']);
+ok(prep.sets[0].values.get(JSON.stringify([points[0].ts.slice(0,10),points[0].wafer_id])).process===10,'prepared phase values use measured summary');
+ok(!('normals' in prep)&&!('out' in prep),'phase preparation performs no anomaly classification');
 window.FullAnalysis.saveRef({from:points[0].ts,to:points[2].ts,points:points.slice(0,3)},'model');
 ok(window.FullAnalysis.getRef().groups[0].equipment==='EQ_A','Overview selection saves REF scope');
 window.FullAnalysis.saveRef({from:points[3].ts,to:points[4].ts,points:points.slice(3,5)},'model');

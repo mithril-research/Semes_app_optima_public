@@ -26,8 +26,8 @@ function switchView(){}function openWaferInDetail(id,date){opened.push({id:decod
 var nativeFetch=window.fetch;
 ['EQ_A','EQ_B'].forEach(function(eq,e){['dsv1','dsv2'].forEach(function(ch,c){for(var i=0;i<12;i++){
  var p={tool:eq,chamber:ch,recipe:'A',wafer_id:eq+'_'+ch+'_'+i,ts:new Date(fixtureNow-1800000+i*60000).toISOString(),ratio:i===11?2:.2};waferHistory.push(p);
- var means={},mins={},stds={},peaks={};['T_950','P_950','S_950'].forEach(function(name,j){means[name]={};mins[name]={};stds[name]={};peaks[name]={};for(var step=1;step<=5;step++){var v=10+e*20+c*5+step+i*.01+j+(i===11?100:0);means[name][step]=v;mins[name][step]=v-2;peaks[name][step]=v+2;stds[name][step]=1.25;}});
- rows[p.wafer_id]={wid:p.wafer_id,date:p.ts.slice(0,10),sensor_metrics:{mean:means,min:mins,std:stds},peaks:peaks,step_timing:{steps:{1:{seconds:5},2:{seconds:7},3:{seconds:9},4:{seconds:11},5:{seconds:13}}},valve_phases:{version:2,status:i===10?'missing':'ok',steps:{supply:[0,1],wait:[2],process:[3,4],discharge:[5]}}};
+ var means={},mins={},stds={},peaks={},counts={};['T_950','P_950','S_950'].forEach(function(name,j){means[name]={};mins[name]={};stds[name]={};peaks[name]={};counts[name]={};for(var step=1;step<=5;step++){var v=10+e*20+c*5+step+i*.01+j+(i===11?100:0);means[name][step]=v;mins[name][step]=v-2;peaks[name][step]=v+2;stds[name][step]=1.25;counts[name][step]=step===3?1:3;}});
+ rows[p.wafer_id]={wid:p.wafer_id,date:p.ts.slice(0,10),sensor_metrics:{mean:means,min:mins,std:stds,count:counts},peaks:peaks,step_timing:{steps:{1:{seconds:5},2:{seconds:7},3:{seconds:9},4:{seconds:11},5:{seconds:13}}},valve_phases:{version:2,status:i===10?'missing':'ok',steps:{supply:[0,1],wait:[2],process:[3,4],discharge:[5]}}};
 }});});
 waferHistory.sort((a,b)=>Date.parse(a.ts)-Date.parse(b.ts));
 window.fetch=async function(url,opts){
@@ -52,8 +52,13 @@ checks = r'''
  await waitFor(()=>app.querySelectorAll('.fa-row').length===2);sensorRow().scrollIntoView();await waitFor(()=>sensorRow().querySelector('.fa-svg'));
  ok(app.querySelectorAll('.fa-row').length===2,'sensor and duration produce separate rows');
  ok(app.querySelectorAll('.fa-row')[0].querySelectorAll('.fa-stage').length===4,'four actual valve phases');
- ok(!app.querySelector('.fa-point[data-step="0"]'),'numeric zero excluded');
- ok(app.querySelector('.fa-ng-ring')&&app.querySelector('.fa-outlier'),'composite ring and measured step outlier displayed separately');
+ ok(!app.querySelector('.fa-point[data-step]'),'points aggregate phases rather than individual steps');
+ ok(!app.querySelector('.fa-ng-ring,.fa-outlier')&&!app.textContent.includes('정상 범위 밖')&&!app.textContent.includes('종합 점수 1 이상'),'anomaly marks and legends removed');
+ ok(sensorRow().querySelectorAll('.fa-stage[data-phase="process"] .fa-point').length===22,'one process point per wafer even with two process steps');
+ ok(Number(sensorRow().querySelector('.fa-point[data-phase="process"]').dataset.value)===13.75,'process mean uses unequal sample counts across steps');
+ ok(sensorRow().querySelector('.fa-stage[data-phase="process"] .fa-step-range').textContent.includes('스텝 3–4'),'process step range displayed without individual step cells');
+ ok(!sensorRow().querySelector('[data-fa-wafer] title').textContent.includes('종합 점수'),'tooltip contains phase measurements without composite score');
+ var durationRow=app.querySelector('.fa-row[data-sensor="__duration__"]');durationRow.scrollIntoView();await waitFor(()=>durationRow.querySelector('.fa-point[data-phase="process"]'));ok(Number(durationRow.querySelector('.fa-point[data-phase="process"]').dataset.value)===20,'process duration sums steps three and four');
  ok(app.querySelector('.fa-status').textContent.includes('미확인 2매'),'missing valve phases reported');
  var reference=waferHistory.filter(p=>p.tool==='EQ_B'&&p.chamber==='dsv1').slice(0,6);
  FullAnalysis.saveRef({from:reference[0].ts,to:reference[5].ts,points:reference},'fixture');
@@ -64,9 +69,10 @@ checks = r'''
  var firstRow=sensorRow(),phase=firstRow.querySelector('.fa-stage[data-phase="supply"]');
  ok(Number(phase.dataset.yMin)<11&&Number(phase.dataset.yMax)>31,'phase Y domain includes selected and REF on one axis');
  ['max','min','std','mean'].forEach(function(stat){var before=requests.length;app.querySelector('.fa-stat[data-stat="'+stat+'"]').click();ok(requests.length===before,'stat switch reuses measurements');});
- app.querySelector('.fa-stat[data-stat="std"]').click();sensorRow().scrollIntoView();await waitFor(()=>sensorRow().querySelector('.fa-point[data-step="1"]'));
- ok(Number(sensorRow().querySelector('.fa-point[data-step="1"]').dataset.value)===1.25,'population std from measured summary');
- app.querySelector('.fa-stat[data-stat="mean"]').click();sensorRow().scrollIntoView();await waitFor(()=>sensorRow().querySelector('.fa-point[data-step="1"]'));
+ app.querySelector('.fa-stat[data-stat="std"]').click();sensorRow().scrollIntoView();await waitFor(()=>sensorRow().querySelector('.fa-point[data-phase="supply"]'));
+ ok(Number(sensorRow().querySelector('.fa-point[data-phase="supply"]').dataset.value)===1.25,'population std from measured summary');
+ ok(Math.abs(Number(sensorRow().querySelector('.fa-point[data-phase="process"]').dataset.value)-Math.sqrt(1.75))<1e-9,'process std pools within and between step variance');
+ app.querySelector('.fa-stat[data-stat="mean"]').click();sensorRow().scrollIntoView();await waitFor(()=>sensorRow().querySelector('.fa-point[data-phase="supply"]'));
  var phaseCheck=app.querySelector('.fa-phases input[value="wait"]');phaseCheck.click();sensorRow().scrollIntoView();await waitFor(()=>sensorRow().querySelector('.fa-svg'));
  ok(!app.querySelector('.fa-stage[data-phase="wait"]'),'phase toggle removes just selected phase');phaseCheck.click();
  sensorRow().scrollIntoView();await waitFor(()=>app.querySelectorAll('.fa-svg').length===2);await pause();
