@@ -23,6 +23,32 @@ var normal=Array(20).fill(.5);
             result = subprocess.run(['gjs', str(path)], capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
+    def test_reference_distribution_controls_selected_wafer_screening(self):
+        self.check_js("""
+function sensorTrendEquipment(p){return p.tool;}
+function dispFirstOn(){return true;}
+function row(v){return {valve_phases:{version:2,status:'ok',steps:{process:[1]}},sensor_metrics:{mean:{sensor:{1:v}}},cylinder_difference:null};}
+var selected=series(Array(6).fill(.2)),ref=series(Array(6).fill(.2)).map((p,i)=>Object.assign({},p,{wafer_id:'ref'+i}));
+var baseline=ref.map(()=>row(10)),shifted=selected.map(()=>row(20));
+var detected=detectReferenceMeanSensors(shifted,selected,baseline,ref,'process');
+assert(detected.sensors[0].outliers.length===6,'sustained selected shift cannot normalize itself');
+assert(detected.sensors[0].normalMean===10&&detected.sensors[0].selectedMean===20,'means come from independent populations');
+assert(!detectSelectedMeanSensors(shifted,'process').sensors.length,'old self baseline would miss this shift');
+assert(!detectReferenceMeanSensors(shifted,selected,ref.map(()=>row(20)),ref,'process').sensors.length,'changing reference changes classification');
+assert(!detectReferenceMeanSensors(shifted,selected,baseline.slice(0,4),ref.slice(0,4),'process').tested,'reference requires five valid wafers');
+assert(!detectReferenceMeanSensors(shifted,selected,baseline,ref.map(p=>Object.assign({},p,{tool:'OTHER'})),'process').tested,'another equipment never supplies a baseline');
+assert(!detectReferenceMeanSensors(shifted,selected,baseline,ref.map(p=>Object.assign({},p,{recipe:'OTHER'})),'process').tested,'another recipe never supplies a baseline');
+var mixedPoints=selected.concat(selected.map(p=>Object.assign({},p,{tool:'OTHER'}))),mixedRows=shifted.concat(shifted);
+var mixedRef=ref.concat(ref.map(p=>Object.assign({},p,{tool:'OTHER',wafer_id:'other'+p.wafer_id}))),mixedBaseline=baseline.concat(ref.map(()=>row(20)));
+var mixed=detectReferenceMeanSensors(mixedRows,mixedPoints,mixedBaseline,mixedRef,'process');assert(mixed.sensors[0].outliers.length===6&&mixed.sensors[0].outliers.every(o=>o.index<6),'each group uses its own reference distribution');
+var source={},a=cachedCurationAnalysis(source,selected,shifted,{points:ref,rows:baseline});
+assert(a.auto.sensors[0].outliers.length===6,'reference enters cached analysis');
+assert(!cachedCurationAnalysis(source,selected,shifted,null).auto.best,'missing reference never falls back to selected mean');
+assert(cachedCurationAnalysis(source,selected,shifted,{points:ref,rows:baseline})===a,'unchanged reference cache reused');
+var changed=baseline.slice();changed[0]=row(100);assert(cachedCurationAnalysis(source,selected,shifted,{points:ref,rows:changed})!==a,'changed reference measurements invalidate cache');
+assert(cachedCurationAnalysis(source,selected,shifted,{points:ref,rows:baseline})!==a,'restoring replaced row recalculates cached result');
+""")
+
     def test_selected_sensor_priority_uses_mean_outlier_strength(self):
         self.check_js("""
 var rows=Array.from({length:200},function(_,i){

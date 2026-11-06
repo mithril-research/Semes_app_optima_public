@@ -4478,8 +4478,23 @@ function curationCylinderRow(row){
   ['mean','min'].forEach(function(metric){metrics[metric]=Object.assign({},metrics[metric]||{});var table={};Object.keys(diff.step_stats).forEach(function(st){table[st]=diff.step_stats[st][metric];});metrics[metric][CURATION_CYLINDER]=table;});
   peaks[CURATION_CYLINDER]={};Object.keys(diff.step_stats).forEach(function(st){peaks[CURATION_CYLINDER][st]=diff.step_stats[st].max;});return Object.assign({},row,{sensor_metrics:metrics,peaks:peaks});
 }
-function detectSelectedAutoPhase(rows,points){
-  var results=['supply','wait','process','discharge'].map(function(phase){var result=detectSelectedMeanSensors(rows,phase);
+// Reference distributions stay independent of selected wafers, per equipment/chamber/recipe.
+function detectReferenceMeanSensors(rows,points,referenceRows,referencePoints,phaseKey){
+  function scope(p){return JSON.stringify([sensorTrendEquipment(p),p.chamber,p.mean_recipe||p.recipe]);}
+  var groups=new Map(),refs=new Map();points.forEach(function(p,i){var k=scope(p);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(i);});referencePoints.forEach(function(p,i){var k=scope(p);if(!refs.has(k))refs.set(k,[]);refs.get(k).push(i);});
+  var names=Array.from(new Set(rows.flatMap(function(r){return Object.keys(((r.sensor_metrics||{}).mean)||{});}))).filter(function(n){return !/^\d+$/.test(n);}),found=[],testedSensors=[],insufficient=0;
+  names.forEach(function(name){var all=rows.map(function(r){return curationSupplyValues(r,name,'',phaseKey).temperature;}),base=referenceRows.map(function(r){return curationSupplyValues(r,name,'',phaseKey).temperature;}),outliers=[],centers=[],selected=[],testedGroups=0,baselineCount=0;
+    groups.forEach(function(indices,k){var ri=refs.get(k)||[],values=ri.map(function(i){return base[i];}).filter(function(v){return v!==null;}),valid=indices.filter(function(i){return all[i]!==null;});if(values.length<5||values.length<ri.length*.8||!valid.length||valid.length<indices.length*.8)return;
+      testedGroups++;baselineCount+=values.length;var mean=values.reduce(function(sum,v){return sum+v/values.length;},0),sd=Math.sqrt(values.reduce(function(sum,v){return sum+Math.pow(v-mean,2)/values.length;},0)),cutoff=Math.max(3*sd,Math.abs(mean)*.01,1e-9);
+      valid.forEach(function(i){centers.push(mean);selected.push(all[i]);if(Math.abs(all[i]-mean)>cutoff)outliers.push({index:i,value:all[i],baselineMean:mean,cutoff:cutoff,strength:Math.abs(all[i]-mean)/cutoff});});
+    });
+    if(!testedGroups){insufficient++;return;}testedSensors.push(name);if(!outliers.length)return;
+    var high=outliers.filter(function(v){return v.value>v.baselineMean;}).length,low=outliers.length-high,normalMean=centers.reduce(function(sum,v){return sum+v/centers.length;},0),selectedMean=selected.reduce(function(sum,v){return sum+v/selected.length;},0);
+    found.push({sensor:name,direction:high&&low?'both':high?'high':'low',normalMean:normalMean,selectedMean:selectedMean,outliers:outliers,high:high,low:low,normalCount:baselineCount,strength:outliers.reduce(function(sum,v){return sum+v.strength/outliers.length;},0)});
+  });found.sort(function(a,b){return b.strength-a.strength||a.sensor.localeCompare(b.sensor);});return {sensors:found,total:names.length,tested:testedSensors.length,testedSensors:testedSensors,insufficient:insufficient};
+}
+function detectSelectedAutoPhase(rows,points,referenceRows,referencePoints){
+  var results=['supply','wait','process','discharge'].map(function(phase){var result=referenceRows!==undefined?detectReferenceMeanSensors(rows,points,referenceRows,referencePoints,phase):detectSelectedMeanSensors(rows,phase);
     return {phase:phase,result:result,strength:result.sensors.length?result.sensors[0].strength:0};});
   results.sort(function(a,b){return b.strength-a.strength;});
   var sensors=results.flatMap(function(r){return r.result.sensors.map(function(item){return Object.assign({},item,{phase:r.phase});});});sensors.sort(function(a,b){return b.strength-a.strength||a.phase.localeCompare(b.phase)||a.sensor.localeCompare(b.sensor);});
@@ -4505,15 +4520,17 @@ function curationPhaseTopSensors(sensors,excluded){
   return ['supply','wait','process','discharge'].flatMap(function(phase){return curationSensorAreas(sensors.filter(function(item){return item.phase===phase;}),excluded).flatMap(function(group){return group.sensors;});});
 }
 // Cache by source, exact wafer membership and row identity. Bound retained analyses.
-function cachedCurationAnalysis(source,points,rawRows){
+function cachedCurationAnalysis(source,points,rawRows,reference){
   var cache=source._curationAnalysisCache||(source._curationAnalysisCache=new Map());
-  var key=JSON.stringify([dispFirstOn(),points.map(function(p){return [p.ts,p.wafer_id,p.chamber,p.recipe,!!p.lot_first];})]),entry=cache.get(key);
-  if(entry&&entry.rawRows.length===rawRows.length&&rawRows.every(function(row,i){return row===entry.rawRows[i];})){cache.delete(key);cache.set(key,entry);return entry;}
+  var refPoints=reference?reference.points:[],refRaw=reference?reference.rows:[];
+  var key=JSON.stringify([reference===undefined?'selected':'reference',refPoints.map(function(p){return [sensorTrendEquipment(p),p.ts,p.wafer_id,p.chamber,p.mean_recipe||p.recipe,!!p.lot_first];}),dispFirstOn(),points.map(function(p){return [sensorTrendEquipment(p),p.ts,p.wafer_id,p.chamber,p.mean_recipe||p.recipe,!!p.lot_first];})]),entry=cache.get(key);
+  if(entry&&entry.rawRows.length===rawRows.length&&rawRows.every(function(row,i){return row===entry.rawRows[i];})&&entry.refRaw.length===refRaw.length&&refRaw.every(function(row,i){return row===entry.refRaw[i];})){cache.delete(key);cache.set(key,entry);return entry;}
   var rows=rawRows.map(curationCylinderRow),indices=[];points.forEach(function(p,i){if(dispFirstOn()||!p.lot_first)indices.push(i);});
-  var auto=detectSelectedAutoPhase(indices.map(function(i){return rows[i];}),indices.map(function(i){return points[i];}));
+  var refIndices=[];refPoints.forEach(function(p,i){if(dispFirstOn()||!p.lot_first)refIndices.push(i);});var refRows=refRaw.map(curationCylinderRow);
+  var auto=detectSelectedAutoPhase(indices.map(function(i){return rows[i];}),indices.map(function(i){return points[i];}),reference===undefined?undefined:refIndices.map(function(i){return refRows[i];}),refIndices.map(function(i){return refPoints[i];}));
   // Detection indices refer to included wafers; graphs retain the dimmed first wafers.
   auto.results.forEach(function(result){result.result.sensors.forEach(function(item){item.outliers.forEach(function(outlier){outlier.index=indices[outlier.index];});});});
-  entry={rawRows:rawRows.slice(),rows:rows,auto:auto,analysisCount:indices.length};
+  entry={rawRows:rawRows.slice(),refRaw:refRaw.slice(),rows:rows,auto:auto,analysisCount:indices.length,referenceCount:refIndices.length};
   cache.delete(key);cache.set(key,entry);while(cache.size>12)cache.delete(cache.keys().next().value);return entry;
 }
 function renderCurationSupplyGraph(host,context,values,temperature,pressure,wide,axisState){
@@ -4526,7 +4543,8 @@ function renderCurationSupplyGraph(host,context,values,temperature,pressure,wide
   function cylinderValue(v,series){return v.cylinderValues&&v.cylinderValues[series.key];}
   var metrics=cylinderDifference?['mean']:(axisState._metrics||['mean']);function metricValue(v,f,m){return m==='mean'?v[f]:v[f+(m==='min'?'Min':'Max')];}
   var reference=context.referenceData;
-  var referenceValues=reference?reference.rows.map(function(row,i){return (dispFirstOn()||!reference.points[i].lot_first)?curationSupplyValues(curationCylinderRow(row),temperature,pressure,reference.phase):null;}).filter(Boolean):[];
+  var referencePlotValues=reference?reference.rows.map(function(row){var v=curationSupplyValues(curationCylinderRow(row),temperature,pressure,reference.phase);if(cylinderDifference){v.cylinderValues={};cylinderSeries.forEach(function(series){var component=curationSupplyValues(row,series.name,'',reference.phase);v.cylinderValues[series.key]=series.metric==='mean'?component.temperature:series.metric==='min'?component.temperatureMin:component.temperatureMax;});}return v;}):[];
+  var referenceValues=referencePlotValues.filter(function(v,i){return dispFirstOn()||!reference.points[i].lot_first;});
   var points=context.points,N=points.length,normal=context.normal.length;
   if(!N){host.textContent='비교할 웨이퍼가 없습니다.';return;}
   var times=points.map(function(p){return Date.parse(p.ts);}),t0=times[0],t1=times[N-1],ordinal=t0===t1;
@@ -4544,7 +4562,7 @@ function renderCurationSupplyGraph(host,context,values,temperature,pressure,wide
   ['temperature','pressure'].forEach(function(f){var palette=cylinderColors[f==='temperature'?temperature:pressure];if(palette)colors[f]=palette.mean;});
   if(cylinderDifference)colors[temperature?'temperature':'pressure']='var(--txt-dim)';
   function markerColor(f,metric){var palette=cylinderColors[f==='temperature'?temperature:pressure];return palette?palette[metric]:colors[f];}
-  fields.forEach(function(f){var a=values.flatMap(function(v){return f==='seconds'?[v[f]]:metrics.map(function(m){return metricValue(v,f,m);}).concat(cylinderDifference&&f===(temperature?'temperature':'pressure')?enabledCylinderSeries.map(function(series){return cylinderValue(v,series);}):[]);}).filter(function(v){return typeof v==='number'&&isFinite(v);}),lo=0,hi=1;if(a.length){lo=a.reduce(function(a,b){return Math.min(a,b);},Infinity);hi=a.reduce(function(a,b){return Math.max(a,b);},-Infinity);var pad=Math.max((hi-lo)*.1,Math.abs(hi)*.01,.001);lo=f==='seconds'?Math.max(0,lo-pad):lo-pad;hi=hi+pad;}scales[f]={lo:lo,hi:hi,available:a.length};stats[f]=context.lot?curationSupplyStats(values.filter(function(v,i){return context.roles[i]==='normal';}).concat(values.filter(function(v,i){return context.roles[i]==='selected';})),f,normal):curationSupplyStats(values,f,normal);});
+  fields.forEach(function(f){var a=values.concat(referencePlotValues).flatMap(function(v){return f==='seconds'?[v[f]]:metrics.map(function(m){return metricValue(v,f,m);}).concat(cylinderDifference&&f===(temperature?'temperature':'pressure')?enabledCylinderSeries.map(function(series){return cylinderValue(v,series);}):[]);}).filter(function(v){return typeof v==='number'&&isFinite(v);}),lo=0,hi=1;if(a.length){lo=a.reduce(function(a,b){return Math.min(a,b);},Infinity);hi=a.reduce(function(a,b){return Math.max(a,b);},-Infinity);var pad=Math.max((hi-lo)*.1,Math.abs(hi)*.01,.001);lo=f==='seconds'?Math.max(0,lo-pad):lo-pad;hi=hi+pad;}scales[f]={lo:lo,hi:hi,available:a.length};stats[f]=context.lot?curationSupplyStats(values.filter(function(v,i){return context.roles[i]==='normal';}).concat(values.filter(function(v,i){return context.roles[i]==='selected';})),f,normal):curationSupplyStats(values,f,normal);});
   if(context.selectedMean)fields.forEach(function(f){var included=values.filter(function(v,i){return dispFirstOn()||!points[i].lot_first;});stats[f]=curationSupplyStats(included,f,included.length);stats[f].selected=stats[f].normal;});
   var referenceStats={};fields.forEach(function(f){referenceStats[f]=curationSupplyStats(referenceValues,f,referenceValues.length).normal;var mean=referenceStats[f].mean;if(reference&&f!=='seconds'&&mean!==null){var scale=scales[f],pad=Math.max(Math.abs(mean)*.01,.001);scale.lo=Math.min(scale.lo,mean-pad);scale.hi=Math.max(scale.hi,mean+pad);scale.available++;}});
   var specs=[{key:'x',label:'X축 기간',lo:autoX0,hi:autoX1}];
@@ -4590,6 +4608,19 @@ function renderCurationSupplyGraph(host,context,values,temperature,pressure,wide
   var sensorAxesHtml=(temperature?axis('temperature','센서값',70):'')+(pressure?axis('pressure','센서값',70):''),durationAxisHtml=axis('seconds','초 (확대축)',70);
   var leftAxes=context.selectedMean?sensorAxesHtml:durationAxisHtml,rightAxes=context.selectedMean?durationAxisHtml:sensorAxesHtml;
   host.innerHTML='<div class="opt-process-legend"><span><i class="bar"></i>선택 공정 시간 (초, '+(context.selectedMean?'오른쪽':'왼쪽')+' 축)</span>'+(temperature?'<span style="color:'+colors.temperature+'"><i></i>'+esc(temperature)+' (센서값 축)</span>':'')+(pressure?'<span style="color:'+colors.pressure+'"><i></i>'+esc(pressure)+' (센서값 축)</span>':'')+'<span><i class="dash"></i>직전 정상 평균</span><span>음영: 선택 구간</span></div><div class="opt-process-plot">'+leftAxes+'<div style="overflow-x:auto;min-width:0;flex:1;padding-bottom:12px"><svg class="curation-supply-svg" preserveAspectRatio="none" viewBox="0 0 '+W+' '+H+'" style="width:'+(W+'px')+';height:'+H+'px;display:block">'+svg+'</svg></div>'+rightAxes+'</div><div class="opt-process-note">'+(ordinal?'동일 종료시각: 웨이퍼 순번 표시':'가로축: 웨이퍼 종료시각'+(compressed?' · 선택하지 않은 시간 구간 생략':''))+' · 센서 단위는 원본 데이터 단위입니다. 서로 다른 Y축의 높이끼리 직접 비교하지 마세요.</div>';
+  if(reference){
+    var pane=document.createElement('div');pane.className='curation-reference-panel';pane.style.cssText='flex:0 0 220px;width:220px;max-width:35%;border-right:2px solid #7c3aed;margin-right:12px;background:var(--panel-2,#f5f3ff)';
+    var RW=220,rt=reference.points.map(function(p){return Date.parse(p.ts);}),rlo=rt.reduce(function(a,b){return Math.min(a,b);},Infinity),rhi=rt.reduce(function(a,b){return Math.max(a,b);},-Infinity),plot='<text x="110" y="15" text-anchor="middle" fill="#7c3aed" font-size="12">평균 비교구간</text>';
+    referencePlotValues.forEach(function(v,i){if(referencePlotValues.length>240&&i%Math.ceil((referencePlotValues.length-1)/239)!==0&&i!==referencePlotValues.length-1)return;var xx=12+(rhi>rlo?(rt[i]-rlo)/(rhi-rlo):.5)*(RW-24),p=reference.points[i];
+      if(v.seconds!==null)plot+='<rect class="curation-reference-duration" data-wafer-index="'+i+'" x="'+(xx-2)+'" y="'+y('seconds',v.seconds)+'" width="4" height="'+Math.max(0,H-B-y('seconds',v.seconds))+'" fill="#64748b" opacity=".25"><title>'+title(p,v,'비교구간 소요시간 '+fmt(v.seconds))+'</title></rect>';
+      ['temperature','pressure'].forEach(function(f){var name=f==='temperature'?temperature:pressure;if(!name)return;metrics.forEach(function(metric){var val=metricValue(v,f,metric);if(val==null)return;plot+='<circle class="curation-reference-point" data-wafer-index="'+i+'" data-sensor="'+esc(name)+'" data-metric="'+metric+'" cx="'+xx+'" cy="'+y(f,val)+'" r="3.5" fill="'+markerColor(f,metric)+'"><title>'+title(p,v,'평균 비교구간 '+name+' '+metric+' '+fmt(val))+'</title></circle>';});});
+      enabledCylinderSeries.forEach(function(series){var val=cylinderValue(v,series);if(val==null)return;plot+='<circle class="curation-reference-point" data-wafer-index="'+i+'" data-sensor="'+esc(series.name)+'" cx="'+xx+'" cy="'+y(temperature?'temperature':'pressure',val)+'" r="3" fill="'+series.color+'"><title>'+title(p,v,'평균 비교구간 '+series.label+' '+fmt(val))+'</title></circle>';});
+    });
+    fields.forEach(function(f){if(f==='seconds'||metrics.indexOf('mean')<0)return;var mean=referenceStats[f].mean;if(mean!==null)plot+='<line x1="0" x2="220" y1="'+y(f,mean)+'" y2="'+y(f,mean)+'" stroke="#7c3aed" stroke-dasharray="9 3 2 3"/>';});
+    plot+=curationTimeTicks(rlo,rhi===rlo?rlo+60000:rhi,12,RW-24,H,Math.max(60000,rhi-rlo));
+    pane.innerHTML='<svg class="curation-reference-svg" viewBox="0 0 220 '+H+'" style="width:100%;height:'+H+'px;display:block">'+plot+'</svg>';
+    var main=host.querySelector('.curation-supply-svg').parentElement;main.before(pane);styleCurationLotFirst(pane,reference.points);bindCurationWaferLinks(pane,reference.points);
+  }
   var labels={seconds:'선택 공정 소요시간 (초)',temperature:temperature,pressure:pressure};
   host.insertAdjacentHTML('beforeend','<div class="opt-process-table"><table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr>'+['항목','직전 정상 평균 (유효 매수)','선택 구간 평균 (유효 매수)','변화량'].map(function(v){return '<th style="text-align:left;padding:7px;background:var(--panel-2)">'+v+'</th>';}).join('')+'</tr></thead><tbody>'+fields.filter(function(f){return labels[f];}).map(function(f){var st=stats[f],delta=st.normal.mean===null||st.selected.mean===null?null:st.selected.mean-st.normal.mean;return '<tr>'+[labels[f],fmt(st.normal.mean)+' ('+st.normal.count+'매)',fmt(st.selected.mean)+' ('+st.selected.count+'매)',delta===null?'비교 불가':(delta>0?'+':'')+fmt(delta)].map(function(v){return '<td style="padding:7px;border-bottom:1px solid var(--line)">'+esc(v)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>');
   var cards=fields.filter(function(field){return labels[field];}).map(function(field){
@@ -4606,6 +4637,7 @@ function renderCurationSupplyGraph(host,context,values,temperature,pressure,wide
   }
   if((temperature||pressure)&&!cylinderDifference){var picks=document.createElement('div');picks.className='curation-stat-picks';picks.style.cssText='display:flex;gap:12px;margin:8px 0;font-size:12px';[['mean','● 평균'],['min','▼ 최솟값'],['max','■ 최댓값']].forEach(function(pair){var label=document.createElement('label'),check=document.createElement('input');label.style.color=markerColor(temperature?'temperature':'pressure',pair[0]);check.type='checkbox';check.dataset.metric=pair[0];check.checked=metrics.indexOf(pair[0])>=0;check.onchange=function(){axisState._metrics=Array.from(picks.querySelectorAll('input:checked')).map(function(e){return e.dataset.metric;});renderCurationSupplyGraph(host,context,values,temperature,pressure,wide,axisState);};label.appendChild(check);label.appendChild(document.createTextNode(pair[1]));picks.appendChild(label);});host.prepend(picks);}
   if(cylinderDifference){var picks=document.createElement('div');picks.className='curation-cylinder-picks';picks.style.cssText='display:flex;gap:12px;flex-wrap:wrap;margin:8px 0;font-size:12px';cylinderSeries.forEach(function(series){var label=document.createElement('label'),check=document.createElement('input');label.style.color=series.color;check.type='checkbox';check.dataset.series=series.key;check.checked=enabledCylinderSeries.indexOf(series)>=0;check.onchange=function(){axisState._cylinderSeries=Array.from(picks.querySelectorAll('input:checked')).map(function(e){return e.dataset.series;});renderCurationSupplyGraph(host,context,values,temperature,pressure,wide,axisState);};label.appendChild(check);label.appendChild(document.createTextNode(({mean:'● ',min:'▼ ',max:'■ '}[series.metric])+series.label));picks.appendChild(label);});host.prepend(picks);}
+  var referencePane=host.querySelector('.curation-reference-panel');if(referencePane){styleCurationLotFirst(referencePane,reference.points);bindCurationWaferLinks(referencePane,reference.points);}
   syncCurationScroll(host,host.querySelector('.curation-supply-svg').parentElement);
   var viewport=host.querySelector('.curation-supply-svg').parentElement,marks=host.querySelector('.curation-viewport-marks'),frame=null,lastLeft=-Infinity,lastWidth=0;
   function paintViewport(){frame=null;if(!marks.isConnected)return;var left=viewport.scrollLeft,width=viewport.clientWidth||800;if(Math.abs(left-lastLeft)<40&&width===lastWidth)return;lastLeft=left;lastWidth=width;marks.innerHTML=waferMarks(left,width);styleCurationLotFirst(marks,points);bindCurationWaferLinks(marks,points);}
@@ -4633,7 +4665,7 @@ function mountCurationSupply(box,data,host,points,region){
   var section=document.createElement('section');section.className='curation-supply';section.style.cssText='margin-top:16px;border-top:1px solid var(--line);padding-top:12px';
   section.innerHTML='<h2>선택 공정 소요시간 · 센서값 비교</h2><label>비교 공정 <select class="curation-phase"><option value="supply">가압</option><option value="wait">대기</option><option value="process">공정</option><option value="discharge">배출</option></select></label><div class="muted" style="font-size:12px;margin:6px 0">선택 공정 스텝의 소요시간 합계와 스텝별 센서 평균의 산술평균 · 선택 구간 및 직전 정상 최대 8매만 조회</div><button class="btn primary curation-supply-load">선택 공정 조회·센서 자동 감지</button> <span class="curation-supply-status muted" role="status"></span><div class="curation-supply-controls" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0"></div><div class="curation-supply-chart"></div>';
   if(context.lot)section.innerHTML=section.innerHTML.replace('선택 구간 및 직전 정상 최대 8매만 조회','이전 정상 LOT부터 선택 LOT 뒤 2개 LOT까지 조회');
-  if(region.selectedMean)section.innerHTML=section.innerHTML.replace('이전 정상 LOT부터 선택 LOT 뒤 2개 LOT까지 조회','X축 구간으로 선택한 웨이퍼만 조회 · 선택 영역 평균 기준');
+  if(region.selectedMean)section.innerHTML=section.innerHTML.replace('이전 정상 LOT부터 선택 LOT 뒤 2개 LOT까지 조회','선택 웨이퍼를 평균 비교구간 기준으로 선별 · 같은 설비·챔버·레시피');
   host.appendChild(section);var button=section.querySelector('button'),status=section.querySelector('.curation-supply-status'),controls=section.querySelector('.curation-supply-controls'),chart=section.querySelector('.curation-supply-chart');
   var phaseSelect=section.querySelector('.curation-phase');phaseSelect.value=state.phase||'process';state.phase=phaseSelect.value;phaseSelect.onchange=function(){state.phase=phaseSelect.value;if(state.open)render();};
   if(region.selectedMean){phaseSelect.parentElement.remove();section.querySelector('h2').textContent='공정 자동 감지 · 센서값 비교';section.querySelector('h2').style.fontSize='15px';button.hidden=true;}
@@ -4668,7 +4700,7 @@ function mountCurationSupply(box,data,host,points,region){
         var scope=new Set(context.points.map(function(p){return JSON.stringify([sensorTrendEquipment(p),p.chamber,p.mean_recipe||p.recipe]);})),seen=new Set();
         var referencePoints=(period.points||[]).filter(function(p){var time=Date.parse(p.ts),id=key(p);if(seen.has(id)||!isFinite(time)||time<start||time>end||!scope.has(JSON.stringify([sensorTrendEquipment(p),p.chamber,p.mean_recipe||p.recipe])))return false;seen.add(id);return true;});
         if(!referencePoints.length)throw Error('같은 설비·챔버·레시피의 조회기간 자료가 없습니다.');
-        var pending=referencePoints.filter(function(p){var row=cache[key(p)];return !row||!row.sensor_metrics||!row.step_timing||!row.valve_phases||row.valve_phases.version!==2;});
+        var pending=referencePoints.filter(function(p){var row=cache[key(p)];return !row||!row.sensor_metrics||!row.step_timing||!row.valve_phases||row.valve_phases.version!==2||!Object.prototype.hasOwnProperty.call(row,'cylinder_difference');});
         for(var i=0;i<pending.length;i+=64){
           var batch=pending.slice(i,i+64).map(function(p){return {date:String(p.ts).slice(0,10),wid:p.wafer_id};});
           var fetched=await fetchTrendBatch(source,data.model_id,'step-times',batch,controller.signal);
@@ -4677,7 +4709,7 @@ function mountCurationSupply(box,data,host,points,region){
           if(batch.some(function(p){return !cache[p.date+'/'+p.wid];}))throw Error('일부 웨이퍼 자료가 누락되었습니다. 다시 조회하세요.');
         }
         state.referenceFrom=from;state.referenceTo=to;state.referencePoints=referencePoints;
-        referenceStatus.textContent='조회 완료 · '+referencePoints.length+'매 · 보라색 점선: 센서 평균';if(state.open)render();
+        referenceStatus.textContent='조회 완료 · '+referencePoints.length+'매 · 비교구간 평균·표준편차로 이상 웨이퍼 선별';if(state.open)render();
       }catch(e){if(live()&&request===referenceRequest)referenceStatus.textContent=e.message;}
       finally{if(request===referenceRequest)referenceApply.disabled=false;}
     };
@@ -4707,11 +4739,11 @@ function mountCurationSupply(box,data,host,points,region){
   function render(){
     context.referenceData=state.referencePoints?{points:state.referencePoints,rows:state.referencePoints.map(function(p){return cache[key(p)]||{};}),from:state.referenceFrom,to:state.referenceTo,phase:state.dragPhase||'process'}:null;
     chart.querySelectorAll('*').forEach(function(el){if(el._viewportResize)el._viewportResize.disconnect();});
-    var rawRows=context.points.map(function(p){return cache[key(p)]||{};}),analysis=region.selectedMean?cachedCurationAnalysis(source,context.points,rawRows):null;
+    var rawRows=context.points.map(function(p){return cache[key(p)]||{};}),analysis=region.selectedMean?cachedCurationAnalysis(source,context.points,rawRows,context.referenceData):null;
     var rows=analysis?analysis.rows:rawRows,detected=region.selectedMean?null:detectCurationSensors(context.lot?rows.filter(function(r,i){return context.roles[i]==='normal';}).concat(rows.filter(function(r,i){return context.roles[i]==='selected';})):rows,context.normal.length,state.phase);
     if(region.selectedMean){
       var excluded=state.excludedSensors||[];
-      var auto=analysis.auto,phaseNames={supply:'가압',wait:'대기',process:'공정',discharge:'배출'};if(!auto.best){controls.textContent='가압·대기·공정·배출 자동 비교 완료';status.textContent='표시 '+rows.length+'매 · 계산 '+analysis.analysisCount+'매 · LOT 첫 장 '+(dispFirstOn()?'포함':'제외');chart.textContent=auto.results.some(function(r){return r.result.tested;})?'기준 이상 벗어난 공정·센서가 없습니다.':'자동 감지에 필요한 유효 자료가 부족합니다.';return;}detected={matched:auto.sensors.length,sensors:curationPhaseTopSensors(auto.sensors,excluded),tested:auto.results.reduce(function(n,r){return n+r.result.tested;},0),insufficient:auto.results.reduce(function(n,r){return n+r.result.insufficient;},0)};}
+      var auto=analysis.auto,phaseNames={supply:'가압',wait:'대기',process:'공정',discharge:'배출'};if(!auto.best){controls.textContent='가압·대기·공정·배출 자동 비교 완료';status.textContent='표시 '+rows.length+'매 · 계산 '+analysis.analysisCount+'매 · LOT 첫 장 '+(dispFirstOn()?'포함':'제외');chart.textContent=!context.referenceData?'평균 비교기간을 선택하고 평균 조회·표시를 눌러주세요.':auto.results.some(function(r){return r.result.tested;})?'평균 비교구간 기준에서 벗어난 공정·센서가 없습니다.':'평균 비교구간의 같은 설비·챔버·레시피별 유효 자료가 부족합니다. (기준 5매 이상 · 유효율 80% 이상)';return;}detected={matched:auto.sensors.length,sensors:curationPhaseTopSensors(auto.sensors,excluded),tested:auto.results.reduce(function(n,r){return n+r.result.tested;},0),insufficient:auto.results.reduce(function(n,r){return n+r.result.insufficient;},0)};}
     controls.innerHTML='<span style="font-size:12px">센서 자동 감지 '+(region.selectedMean?auto.sensors.length:detected.sensors.length)+'개 / 비교 가능 '+detected.tested+'개 · 자료 부족 '+detected.insufficient+'개</span>';
 
     if(region.selectedMean){
@@ -4724,10 +4756,10 @@ function mountCurationSupply(box,data,host,points,region){
     }
     chart.innerHTML='<details style="font-size:12px;margin:8px 0"><summary>센서 자동 감지 기준</summary><div style="line-height:1.7;padding:6px 0">센서별 선택 공정 스텝 평균을 직전 정상 웨이퍼와 비교합니다. 정상·선택 각각 유효 5매 이상, 자료 유효율 80% 이상이 필요합니다. 정상 평균과의 차이가 max(정상 표준편차의 3배, 정상 평균 절댓값의 1%, 0.000000001)를 초과하고 선택 웨이퍼의 80% 이상이 같은 방향으로 초과할 때 감지합니다. 표준편차는 모집단 기준(ddof=0)입니다. 점수나 불량 판정은 바꾸지 않습니다.</div></details>';
     if(context.lot)chart.innerHTML=chart.innerHTML.replace(/직전 정상/g,'정상').replace(/정상/g,'이전 정상 LOT').replace(/선택 웨이퍼/g,'선택 LOT 웨이퍼');
-    if(region.selectedMean)chart.innerHTML='';
+    if(region.selectedMean)chart.innerHTML='<details style="font-size:12px;margin:8px 0"><summary>평균 비교구간 기준</summary><p>같은 설비·챔버·레시피·공정의 비교구간 유효 5매 이상(유효율 80% 이상)에서 평균·모집단 표준편차를 계산합니다. 선택 웨이퍼의 센서값이 비교구간 평균에서 max(표준편차 3배, 평균 절댓값 1%, 0.000000001)를 초과해 벗어나면 선별합니다. 비교 기준이 없는 그룹은 선별하지 않습니다. 왼쪽 비교 그래프는 최대 240매를 간격 표시하며 통계는 전체 자료로 계산합니다.</p></details>';
     var base=rows.map(function(r){return curationSupplyValues(r,'','',state.phase);}),missing=base.filter(function(v){return !v.steps.length;}).length;
     status.textContent=(context.normal.length?'기준: 이전 정상 LOT '+region.normalLot.lot+' · ':'이전 정상 LOT 없음 · 비교 불가 · ')+'조회 완료 · '+context.points.length+'매 · 선택 공정 구간 확인 불가 '+missing+'매 · 소요시간 없음 '+base.filter(function(v){return v.seconds===null;}).length+'매';
-    if(region.selectedMean)status.textContent='선택 영역 평균 기준 · 표시 '+context.points.length+'매 · 계산 '+analysis.analysisCount+'매 · LOT 첫 장 '+(dispFirstOn()?'포함':'제외(흐리게 표시)')+' · 4개 공정 비교';
+    if(region.selectedMean)status.textContent='평균 비교구간 기준 · 표시 '+context.points.length+'매 · 계산 '+analysis.analysisCount+'매 · LOT 첫 장 '+(dispFirstOn()?'포함':'제외(흐리게 표시)')+' · 기준 '+analysis.referenceCount+'매 · 4개 공정 비교';
     var issue=base.find(function(v){return v.reason;});if(issue&&!region.selectedMean)status.textContent+=' ('+issue.reason+')';
     if(region.selectedMean&&!auto.sensors.some(function(item){return item.phase===state.dragPhase;})){chart.textContent=phaseNames[state.dragPhase]+' 공정에서 제외 조건을 반영한 이상 센서가 없습니다.';return;}
     if(!region.selectedMean&&!detected.sensors.length){
@@ -4735,7 +4767,7 @@ function mountCurationSupply(box,data,host,points,region){
       note.textContent=!detected.total?'비교할 센서 자료가 없습니다.':!detected.tested?'센서 자동 감지에 필요한 정상·선택 비교 자료가 부족합니다.':'현재 기준에서 높거나 낮아진 센서가 감지되지 않았습니다.';if(context.lot)note.textContent=note.textContent.replace('정상·선택','이전 정상 LOT·선택 LOT');if(region.selectedMean&&excluded.length)note.textContent='제외한 센서를 제외하면 감지 기준을 넘는 센서가 없습니다.';else if(region.selectedMean)note.textContent=!detected.tested?'선택 웨이퍼의 유효 자료가 부족합니다.':'선택 영역 평균에서 기준 이상 벗어난 센서가 없습니다.';chart.appendChild(note);
       var duration=document.createElement('div');chart.appendChild(duration);renderCurationSupplyGraph(duration,context,base,'','',state.wide,sensorAxes(''));return;
     }
-    var info=document.createElement('div');info.className='muted';info.style.cssText='font-size:12px;margin:8px 0';info.textContent=region.selectedMean?'공정 관련 센서 우선 · 같은 우선순위는 이상점 평균 이탈 강도 순 (각 이상점의 평균 대비 절대편차 ÷ 감지 기준값의 평균) · 감지 센서 / 분석 가능 센서 (최초 분석 기준) · 관심 없음 선택 시 같은 공정·구역의 다음 순위 표시':'변화가 큰 순서 · 상위 3개 그래프 자동 펼침 · 나머지는 센서명을 누르면 표시';chart.appendChild(info);
+    var info=document.createElement('div');info.className='muted';info.style.cssText='font-size:12px;margin:8px 0';info.textContent=region.selectedMean?'공정 관련 센서 우선 · 같은 우선순위는 이상점 평균 이탈 강도 순 (각 이상점의 비교구간 평균 대비 절대편차 ÷ 감지 기준값의 평균) · 감지 센서 / 분석 가능 센서 (최초 분석 기준) · 관심 없음 선택 시 같은 공정·구역의 다음 순위 표시':'변화가 큰 순서 · 상위 3개 그래프 자동 펼침 · 나머지는 센서명을 누르면 표시';chart.appendChild(info);
     var previousArea=null,areaPanel=null,areaGroups=[];
     if(region.selectedMean){var phaseResult=auto.results.find(function(r){return r.phase===state.dragPhase;});areaGroups=curationSensorAreas(auto.sensors.filter(function(item){return item.phase===state.dragPhase;}),excluded,phaseResult.result.testedSensors);detected.sensors=areaGroups.flatMap(function(group){var visible=group.sensors.concat(group.ignored).sort(function(a,b){return a.originalRank-b.originalRank;});if(!group.sensors.length)visible.push({area:group.area,exhausted:true});return visible;});}
 
@@ -4762,7 +4794,7 @@ function mountCurationSupply(box,data,host,points,region){
       }
       var part=document.createElement('details');part.className='curation-auto-sensor';part.dataset.sensor=item.sensor;if(item.originalRank)part.dataset.originalRank=item.originalRank;if(item.phase)part.dataset.phase=item.phase;part.style.cssText='border-top:1px solid var(--line);padding:10px 0';
       var heading=document.createElement('summary');heading.style.cssText='cursor:pointer;font-size:14px;font-weight:600';
-      heading.textContent=item.sensor+' · '+(item.direction==='high'?'↑ 높아짐':'↓ 낮아짐')+(context.lot?' · 이전 정상 LOT ':' · 정상 ')+Number(item.normalMean.toPrecision(5))+' → 선택 '+Number(item.selectedMean.toPrecision(5));if(region.selectedMean)heading.textContent=item.phaseRank+'위'+(item.originalRank>item.phaseRank?' (기존 '+item.originalRank+'위)':'')+' · '+item.sensor+' ['+phaseNames[item.phase]+'] · 평균 이탈 강도 '+item.strength.toFixed(2)+'배 · 선택 평균 '+Number(item.normalMean.toPrecision(5))+' · 높은 값 '+item.high+'매 / 낮은 값 '+item.low+'매';part.appendChild(heading);
+      heading.textContent=item.sensor+' · '+(item.direction==='high'?'↑ 높아짐':'↓ 낮아짐')+(context.lot?' · 이전 정상 LOT ':' · 정상 ')+Number(item.normalMean.toPrecision(5))+' → 선택 '+Number(item.selectedMean.toPrecision(5));if(region.selectedMean)heading.textContent=item.phaseRank+'위'+(item.originalRank>item.phaseRank?' (기존 '+item.originalRank+'위)':'')+' · '+item.sensor+' ['+phaseNames[item.phase]+'] · 평균 이탈 강도 '+item.strength.toFixed(2)+'배 · 비교구간 평균 '+Number(item.normalMean.toPrecision(5))+' → 선택 평균 '+Number(item.selectedMean.toPrecision(5))+' · 높은 값 '+item.high+'매 / 낮은 값 '+item.low+'매';part.appendChild(heading);
       if(region.selectedMean){var ignoreLabel=document.createElement('label');ignoreLabel.style.cssText='display:inline-flex;align-items:center;gap:4px;margin-left:12px;font-size:12px;font-weight:400;cursor:pointer';var ignore=document.createElement('input');ignore.type='checkbox';ignore.className='curation-ignore-sensor';ignore.dataset.sensor=item.sensor;ignore.setAttribute('aria-label',item.sensor+' 관심 없음');ignoreLabel.appendChild(ignore);ignoreLabel.appendChild(document.createTextNode('관심 없음'));ignoreLabel.addEventListener('click',function(e){e.stopPropagation();});ignore.addEventListener('keydown',function(e){e.stopPropagation();});ignore.onchange=function(){if(!ignore.checked)return;state.excludedSensors=Array.from(new Set((state.excludedSensors||[]).concat([curationSensorExclusionKey(item.phase,item.sensor)])));state.areaOpen=state.areaOpen||{};state.areaOpen[item.phase+':'+item.area]=true;renderAtSensor(ignore);};heading.appendChild(ignoreLabel);}
       if(region.selectedMean){var out=document.createElement('div');out.style.cssText='font-size:12px;overflow-wrap:anywhere';out.textContent=item.outliers.map(function(o){return context.points[o.index].wafer_id+' ('+Number(o.value.toPrecision(5))+')';}).join(', ');part.appendChild(out);}
       var panel=document.createElement('div');part.appendChild(panel);(region.selectedMean?areaPanel:chart).appendChild(part);var drawn=false,ownArea=region.selectedMean?areaPanel:null;
